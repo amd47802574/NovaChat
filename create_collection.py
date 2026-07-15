@@ -1,7 +1,10 @@
+import os
+
 from pymilvus import MilvusClient, DataType, Function, FunctionType
 
 client = MilvusClient(uri="http://localhost:19530", timeout=30)
 collection_name = "embeddings_collection"
+dense_dim = int(os.getenv("DENSE_EMBEDDING_DIM", "1024"))
 
 if client.has_collection(collection_name):
     print("✅ 集合存在")
@@ -10,7 +13,7 @@ else:
 
     schema = client.create_schema(auto_id=True, enable_dynamic_field=True)
     schema.add_field("id", DataType.INT64, is_primary=True, auto_id=True)
-    schema.add_field("dense_embedding", DataType.FLOAT_VECTOR, dim=1024)
+    schema.add_field("dense_embedding", DataType.FLOAT_VECTOR, dim=dense_dim)
     schema.add_field("sparse_embedding", DataType.SPARSE_FLOAT_VECTOR)
     schema.add_field(
         "text", DataType.VARCHAR, max_length=65535,
