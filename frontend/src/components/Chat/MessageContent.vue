@@ -28,6 +28,21 @@ const parsedHtml = computed(() => {
 });
 
 const onContentClick = (e: MouseEvent) => {
+  const copyButton = (e.target as HTMLElement).closest('.copy-code-btn');
+  if (copyButton) {
+    const code = copyButton.closest('.code-block')?.querySelector('code')?.textContent || '';
+    navigator.clipboard.writeText(code).then(() => {
+      copyButton.classList.add('copied');
+      const label = copyButton.querySelector('span');
+      if (label) label.textContent = '已复制';
+      window.setTimeout(() => {
+        copyButton.classList.remove('copied');
+        if (label) label.textContent = '复制';
+      }, 1400);
+    });
+    return;
+  }
+
   const citeRef = (e.target as HTMLElement).closest('.cite-ref');
   if (!citeRef) return;
   const msgIndexStr = citeRef.getAttribute('data-msg-index');

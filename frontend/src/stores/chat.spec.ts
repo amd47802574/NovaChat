@@ -9,6 +9,7 @@ vi.mock('@/utils/api', () => ({
   default: {
     get: vi.fn(),
     delete: vi.fn(),
+    patch: vi.fn(),
   },
 }));
 

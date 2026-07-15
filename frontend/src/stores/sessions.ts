@@ -6,16 +6,20 @@ export const useSessionStore = defineStore('sessions', {
   state: () => ({
     sessions: [] as ChatSession[],
     showHistorySidebar: false,
+    isHistoryLoading: false,
   }),
 
   actions: {
     async fetchSessions() {
+      this.isHistoryLoading = true;
       try {
         const response = await api.get('/sessions');
         this.sessions = response.data.sessions || [];
       } catch (error: any) {
         const errMsg = error.response?.data?.detail || error.message || '加载历史记录失败';
         throw new Error(errMsg);
+      } finally {
+        this.isHistoryLoading = false;
       }
     },
 
@@ -28,6 +32,40 @@ export const useSessionStore = defineStore('sessions', {
         const errMsg = error.response?.data?.detail || error.message || '删除会话失败';
         throw new Error(errMsg);
       }
+    },
+
+    async updateSession(sessionId: string, updates: { title?: string; pinned?: boolean }) {
+      try {
+        const response = await api.patch(`/sessions/${encodeURIComponent(sessionId)}`, updates);
+        const target = this.sessions.find((session) => session.session_id === sessionId);
+        if (target) {
+          target.title = response.data.title;
+          target.pinned = response.data.pinned;
+        }
+        this.sortSessions();
+        return response.data.message || '会话已更新';
+      } catch (error: any) {
+        const errMsg = error.response?.data?.detail || error.message || '更新会话失败';
+        throw new Error(errMsg);
+      }
+    },
+
+    async clearSessions() {
+      try {
+        const response = await api.delete('/sessions');
+        this.sessions = [];
+        return response.data.message || '历史会话已清空';
+      } catch (error: any) {
+        const errMsg = error.response?.data?.detail || error.message || '清空历史会话失败';
+        throw new Error(errMsg);
+      }
+    },
+
+    sortSessions() {
+      this.sessions.sort((a, b) => {
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      });
     },
   },
 });

@@ -1,8 +1,13 @@
 <template>
   <div class="settings-panel">
     <div class="settings-header">
-      <h2><i class="fas fa-cog"></i> 文档管理</h2>
-      <p>上传文档进行向量化处理，支持 PDF 和 Word、Excel 格式</p>
+      <button class="settings-back-btn" type="button" title="返回对话" @click="backToChat">
+        <i class="fas fa-arrow-left"></i>
+      </button>
+      <div>
+        <h2><i class="fas fa-cog"></i> 文档管理</h2>
+        <p>上传文档进行向量化处理，支持 PDF 和 Word、Excel 格式</p>
+      </div>
     </div>
 
     <UploadSection />
@@ -38,8 +43,14 @@ import { onMounted, onUnmounted } from 'vue';
 import UploadSection from './UploadSection.vue';
 import DocumentItem from './DocumentItem.vue';
 import { useDocumentStore } from '@/stores/documents';
+import { useChatStore } from '@/stores/chat';
 
 const documentStore = useDocumentStore();
+const chatStore = useChatStore();
+
+const backToChat = () => {
+  chatStore.activeNav = 'newChat';
+};
 
 const onRefresh = async () => {
   try {

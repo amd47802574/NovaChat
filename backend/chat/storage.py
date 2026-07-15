@@ -151,6 +151,7 @@ class ConversationStorage:
                     {
                         "session_id": s.session_id,
                         "title": meta.get("title") or s.session_id,
+                        "pinned": bool(meta.get("pinned", False)),
                         "updated_at": s.updated_at.isoformat(),
                         "message_count": count,
                     }
@@ -217,6 +218,53 @@ class ConversationStorage:
             cache.delete(self._messages_cache_key(user_id, session_id))
             cache.delete(self._sessions_cache_key(user_id))
             return True
+        finally:
+            db.close()
+
+    def update_session(self, user_id: str, session_id: str, updates: dict) -> dict | None:
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.username == user_id).first()
+            if not user:
+                return None
+            session = (
+                db.query(ChatSession)
+                .filter(ChatSession.user_id == user.id, ChatSession.session_id == session_id)
+                .first()
+            )
+            if not session:
+                return None
+
+            metadata = dict(session.metadata_json or {})
+            metadata.update(updates)
+            session.metadata_json = metadata
+            session.updated_at = datetime.utcnow()
+            db.commit()
+            cache.delete(self._sessions_cache_key(user_id))
+            return {
+                "session_id": session_id,
+                "title": metadata.get("title") or session_id,
+                "pinned": bool(metadata.get("pinned", False)),
+            }
+        finally:
+            db.close()
+
+    def clear_sessions(self, user_id: str) -> int:
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.username == user_id).first()
+            if not user:
+                return 0
+            sessions = db.query(ChatSession).filter(ChatSession.user_id == user.id).all()
+            session_ids = [session.session_id for session in sessions]
+            deleted_count = len(sessions)
+            for session in sessions:
+                db.delete(session)
+            db.commit()
+            for session_id in session_ids:
+                cache.delete(self._messages_cache_key(user_id, session_id))
+            cache.delete(self._sessions_cache_key(user_id))
+            return deleted_count
         finally:
             db.close()
 

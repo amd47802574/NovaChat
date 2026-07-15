@@ -4,7 +4,7 @@ const api = axios.create({
   timeout: 60000,
 });
 
-// Request interceptor to attach Bearer token
+// 请求拦截器：自动附加登录令牌
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('accessToken');
@@ -18,7 +18,7 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle session expiration (401)
+// 响应拦截器：统一处理登录过期
 api.interceptors.response.use(
   (response) => {
     return response;
@@ -26,7 +26,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 401) {
       localStorage.removeItem('accessToken');
-      // Dispatch a custom event or let store handle the logout redirection
+      // 通知应用清理登录状态
       window.dispatchEvent(new CustomEvent('unauthorized'));
     }
     return Promise.reject(error);

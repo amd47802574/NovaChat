@@ -1,7 +1,5 @@
 <template>
   <div class="app-wrapper" :class="{ unauthenticated: !authStore.isAuthenticated }">
-    <Sidebar />
-
     <main class="main-content">
       <AuthPanel v-if="!authStore.isAuthenticated" />
 
@@ -16,7 +14,6 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue';
-import Sidebar from '@/components/Sidebar.vue';
 import AuthPanel from '@/components/AuthPanel.vue';
 import HistorySidebar from '@/components/HistorySidebar.vue';
 import ChatArea from '@/components/Chat/ChatArea.vue';
@@ -35,7 +32,8 @@ const handleUnauthorized = () => {
 
 onMounted(async () => {
   window.addEventListener('unauthorized', handleUnauthorized);
-  
+  document.documentElement.dataset.theme = localStorage.getItem('novaTheme') || 'light';
+
   if (authStore.token) {
     try {
       await authStore.fetchMe();

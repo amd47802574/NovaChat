@@ -1,12 +1,13 @@
 import { marked } from 'marked';
 import hljs from 'highlight.js';
 
-// Customize the code renderer in marked for syntax highlighting
+// 自定义代码块渲染，并保留语法高亮
 const renderer = new marked.Renderer();
 renderer.code = (code, language) => {
   const validLanguage = language && hljs.getLanguage(language) ? language : 'plaintext';
   const highlighted = hljs.highlight(code, { language: validLanguage }).value;
-  return `<pre><code class="hljs language-${validLanguage}">${highlighted}</code></pre>`;
+  const languageLabel = validLanguage === 'plaintext' ? '文本' : validLanguage;
+  return `<div class="code-block"><div class="code-toolbar"><span>${languageLabel}</span><button type="button" class="copy-code-btn" title="复制代码"><i class="far fa-copy"></i><span>复制</span></button></div><pre><code class="hljs language-${validLanguage}">${highlighted}</code></pre></div>`;
 };
 
 marked.use({

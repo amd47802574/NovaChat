@@ -100,6 +100,7 @@ class SessionMessagesResponse(BaseModel):
 class SessionInfo(BaseModel):
     session_id: str
     title: Optional[str] = None
+    pinned: bool = False
     updated_at: str
     message_count: int
 
@@ -110,4 +111,21 @@ class SessionListResponse(BaseModel):
 
 class SessionDeleteResponse(BaseModel):
     session_id: str
+    message: str
+
+
+class SessionUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    pinned: Optional[bool] = None
+
+
+class SessionUpdateResponse(BaseModel):
+    session_id: str
+    title: str
+    pinned: bool
+    message: str
+
+
+class SessionClearResponse(BaseModel):
+    deleted_count: int
     message: str

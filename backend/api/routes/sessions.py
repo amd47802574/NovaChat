@@ -5,10 +5,13 @@ from backend.db.models import User
 from backend.infra.auth import get_current_user
 from backend.schemas import (
     MessageInfo,
+    SessionClearResponse,
     SessionDeleteResponse,
     SessionInfo,
     SessionListResponse,
     SessionMessagesResponse,
+    SessionUpdateRequest,
+    SessionUpdateResponse,
 )
 
 router = APIRouter(tags=["sessions"])
@@ -35,8 +38,45 @@ async def get_session_messages(session_id: str, current_user: User = Depends(get
 async def list_sessions(current_user: User = Depends(get_current_user)):
     try:
         sessions = [SessionInfo(**item) for item in storage.list_session_infos(current_user.username)]
-        sessions.sort(key=lambda x: x.updated_at, reverse=True)
+        sessions.sort(key=lambda x: (x.pinned, x.updated_at), reverse=True)
         return SessionListResponse(sessions=sessions)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/sessions/{session_id}", response_model=SessionUpdateResponse)
+async def update_session(
+    session_id: str,
+    payload: SessionUpdateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    updates = {}
+    if payload.title is not None:
+        title = payload.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="会话标题不能为空")
+        updates["title"] = title[:80]
+    if payload.pinned is not None:
+        updates["pinned"] = payload.pinned
+    if not updates:
+        raise HTTPException(status_code=400, detail="没有可更新的内容")
+
+    try:
+        result = storage.update_session(current_user.username, session_id, updates)
+        if not result:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        return SessionUpdateResponse(**result, message="会话已更新")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/sessions", response_model=SessionClearResponse)
+async def clear_sessions(current_user: User = Depends(get_current_user)):
+    try:
+        deleted_count = storage.clear_sessions(current_user.username)
+        return SessionClearResponse(deleted_count=deleted_count, message="历史会话已清空")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -1,14 +1,16 @@
 <template>
   <div class="chat-area">
     <header class="chat-header">
-      <div class="header-info">
-        <div class="status-dot"></div>
-        <div>
-          <strong>星智问答</strong>
-          <span>智能引擎已就绪</span>
-        </div>
+      <button class="top-icon-btn menu-trigger" type="button" title="打开历史会话" @click="openHistory">
+        <i class="fas fa-bars"></i>
+      </button>
+      <div class="header-brand" aria-label="NovaChat">
+        <span>NovaChat</span>
+        <small>{{ currentTitle }}</small>
       </div>
-      <div class="header-model"><i class="fas fa-microchip"></i> Nova RAG</div>
+      <button class="new-chat-btn" type="button" title="新建对话" @click="createNewChat">
+        <i class="fas fa-plus"></i>
+      </button>
     </header>
 
     <div class="chat-container" ref="chatContainerRef">
@@ -29,15 +31,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onBeforeUpdate, onMounted } from 'vue';
+import { computed, ref, watch, nextTick, onBeforeUpdate, onMounted } from 'vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import MessageItem from './MessageItem.vue';
 import ChatInput from './ChatInput.vue';
 import { useChatStore } from '@/stores/chat';
+import { useSessionStore } from '@/stores/sessions';
 
 const chatStore = useChatStore();
+const sessionStore = useSessionStore();
 const chatContainerRef = ref<HTMLDivElement | null>(null);
 const messageItemRefs = ref<any[]>([]);
+const currentTitle = computed(() => {
+  const session = sessionStore.sessions.find((item) => item.session_id === chatStore.sessionId);
+  return session?.title || '全新对话';
+});
+
+const openHistory = async () => {
+  sessionStore.showHistorySidebar = true;
+  try {
+    await sessionStore.fetchSessions();
+    chatStore.mergeCachedSessionsIntoHistory();
+  } catch (error: any) {
+    alert(error.message);
+  }
+};
+
+const createNewChat = () => {
+  chatStore.handleNewChat();
+};
 
 onBeforeUpdate(() => {
   messageItemRefs.value = [];

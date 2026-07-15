@@ -111,6 +111,7 @@ export interface Message {
 export interface ChatSession {
   session_id: string;
   title?: string;
+  pinned?: boolean;
   message_count: number;
   updated_at: string;
   isStreaming?: boolean;

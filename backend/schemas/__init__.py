@@ -11,9 +11,12 @@ from backend.schemas.chat import (
     RagTrace,
     RetrievedChunk,
     SessionDeleteResponse,
+    SessionClearResponse,
     SessionInfo,
     SessionListResponse,
     SessionMessagesResponse,
+    SessionUpdateRequest,
+    SessionUpdateResponse,
 )
 from backend.schemas.documents import (
     DocumentDeleteJobResponse,
@@ -41,6 +44,9 @@ __all__ = [
     "SessionInfo",
     "SessionListResponse",
     "SessionDeleteResponse",
+    "SessionClearResponse",
+    "SessionUpdateRequest",
+    "SessionUpdateResponse",
     "DocumentInfo",
     "DocumentListResponse",
     "DocumentUploadResponse",
