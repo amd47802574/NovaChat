@@ -393,8 +393,9 @@ export const useChatStore = defineStore('chat', {
 
         const decoder = new TextDecoder();
         let buffer = '';
+        let streamDone = false;
 
-        while (true) {
+        while (!streamDone) {
           const { done, value } = await reader.read();
           if (done) break;
 
@@ -407,7 +408,10 @@ export const useChatStore = defineStore('chat', {
 
             if (eventStr.startsWith('data: ')) {
               const dataStr = eventStr.slice(6);
-              if (dataStr === '[DONE]') continue;
+              if (dataStr === '[DONE]') {
+                streamDone = true;
+                break;
+              }
               try {
                 const data = JSON.parse(dataStr);
                 if (data.type === 'content') {

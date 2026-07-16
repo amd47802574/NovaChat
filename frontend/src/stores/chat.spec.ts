@@ -98,6 +98,12 @@ const createControlledSseFetch = () => {
         value: encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
       });
     },
+    pushDone() {
+      resolveNextRead({
+        done: false,
+        value: encoder.encode('data: [DONE]\n\n'),
+      });
+    },
     close() {
       closed = true;
       resolveNextRead({ done: true, value: undefined });
@@ -156,6 +162,27 @@ describe('chat store streaming sessions', () => {
 
     stream.close();
     await sendPromise;
+  });
+
+  it('clears loading state immediately when the stream emits DONE', async () => {
+    const stream = createControlledSseFetch();
+    vi.stubGlobal('fetch', stream.fetchMock);
+    const { chatStore, sessionStore } = setupStores();
+
+    chatStore.userInput = 'DONE 后立即恢复发送按钮';
+    const sendPromise = chatStore.handleSend();
+    await flushPromises();
+
+    stream.pushEvent({ type: 'content', content: '回答完成' });
+    await flushPromises();
+
+    stream.pushDone();
+    await sendPromise;
+
+    expect(chatStore.isLoading).toBe(false);
+    expect(chatStore.isViewingStreamingSession).toBe(false);
+    expect(chatStore.streamingSessionId).toBeNull();
+    expect(sessionStore.sessions[0].isStreaming).toBe(false);
   });
 
   it('keeps streaming chunks on the originating session after viewing another history session', async () => {
