@@ -4,7 +4,16 @@ from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 
 from backend.chat.request_context import ChatRequestContext
-from backend.tools import get_current_weather, make_search_knowledge_base
+from backend.tools import (
+    get_current_weather,
+    make_search_knowledge_base,
+    list_documents,
+    get_current_time,
+    calculate,
+    analyze_conversation_history,
+    web_search,
+    analyze_text,
+)
 
 API_KEY = os.getenv("ARK_API_KEY")
 MODEL = os.getenv("MODEL")
@@ -55,6 +64,12 @@ def create_agent_for_request(ctx: ChatRequestContext):
         tools=[
             get_current_weather,
             make_search_knowledge_base(ctx),
+            list_documents,
+            get_current_time,
+            calculate,
+            analyze_conversation_history,
+            web_search,
+            analyze_text,
         ],
         system_prompt=SYSTEM_PROMPT,
     )
