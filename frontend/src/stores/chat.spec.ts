@@ -36,6 +36,32 @@ const createLocalStorageMock = () => {
   };
 };
 
+const createVisibilityDocumentMock = () => {
+  let visibilityState: DocumentVisibilityState = 'visible';
+  const listeners = new Set<(event: Event) => void>();
+  const mock = {
+    get visibilityState() {
+      return visibilityState;
+    },
+    addEventListener: vi.fn((event: string, listener: (event: Event) => void) => {
+      if (event === 'visibilitychange') {
+        listeners.add(listener);
+      }
+    }),
+    removeEventListener: vi.fn((event: string, listener: (event: Event) => void) => {
+      if (event === 'visibilitychange') {
+        listeners.delete(listener);
+      }
+    }),
+    setHidden() {
+      visibilityState = 'hidden';
+      listeners.forEach((listener) => listener({ type: 'visibilitychange' } as Event));
+    },
+  };
+
+  return mock;
+};
+
 const createAbortError = () => {
   if (typeof DOMException !== 'undefined') {
     return new DOMException('The operation was aborted.', 'AbortError');
@@ -131,6 +157,7 @@ const setupStores = () => {
 describe('chat store streaming sessions', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.stubGlobal('localStorage', createLocalStorageMock());
     vi.stubGlobal('alert', vi.fn());
     vi.stubGlobal('confirm', vi.fn(() => true));
@@ -277,6 +304,42 @@ describe('chat store streaming sessions', () => {
     expect(chatStore.sessionId).toBe('session_other');
     expect(chatStore.isLoading).toBe(false);
     expect(chatStore.streamingSessionId).toBeNull();
+  });
+
+  it('removes the empty assistant placeholder when a background network error interrupts mobile streaming', async () => {
+    const visibilityDocument = createVisibilityDocumentMock();
+    let rejectFetch!: (reason?: unknown) => void;
+    const fetchMock = vi.fn(
+      () => new Promise<Response>((_resolve, reject) => {
+        rejectFetch = reject;
+      })
+    );
+    vi.stubGlobal('document', visibilityDocument);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { chatStore } = setupStores();
+    chatStore.userInput = '切后台后不应该显示 network error';
+    const sendPromise = chatStore.handleSend();
+    await flushPromises();
+
+    expect(chatStore.messagesBySession.session_current).toHaveLength(2);
+
+    visibilityDocument.setHidden();
+    rejectFetch(new TypeError('network error'));
+    await sendPromise;
+
+    expect(chatStore.messagesBySession.session_current).toHaveLength(1);
+    expect(chatStore.messagesBySession.session_current[0]).toMatchObject({
+      text: '切后台后不应该显示 network error',
+      isUser: true,
+    });
+    expect(chatStore.messagesBySession.session_current.some((msg) => msg.text.includes('喵呜'))).toBe(false);
+    expect(chatStore.isLoading).toBe(false);
+    expect(chatStore.streamingSessionId).toBeNull();
+    expect(visibilityDocument.removeEventListener).toHaveBeenCalledWith(
+      'visibilitychange',
+      expect.any(Function)
+    );
   });
 
   it('turns hitl_request events into a pending HITL prompt', async () => {

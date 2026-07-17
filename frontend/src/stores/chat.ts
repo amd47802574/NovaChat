@@ -237,6 +237,27 @@ export const useChatStore = defineStore('chat', {
       msg._groupedSteps[groupIndex].collapsed = !msg._groupedSteps[groupIndex].collapsed;
     },
 
+    isDocumentHidden(): boolean {
+      return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    },
+
+    isTransientNetworkError(error: any): boolean {
+      const message = String(error?.message || error || '').toLowerCase();
+      return (
+        error?.name === 'NetworkError'
+        || (
+          error?.name === 'TypeError'
+          && [
+            'network error',
+            'failed to fetch',
+            'load failed',
+            'network request failed',
+            'the network connection was lost',
+          ].some((text) => message.includes(text))
+        )
+      );
+    },
+
     handleNewChat() {
       const sessionId = this.createSessionId();
       this.messagesBySession[sessionId] = [];
@@ -365,6 +386,16 @@ export const useChatStore = defineStore('chat', {
       this.abortController = new AbortController();
       let receivedHitlRequest = false;
       let streamHadError = false;
+      let wasPageHiddenDuringRequest = this.isDocumentHidden();
+      const markPageHiddenDuringRequest = () => {
+        if (this.isDocumentHidden()) {
+          wasPageHiddenDuringRequest = true;
+        }
+      };
+      // 移动端切后台时浏览器可能直接断开流式连接，记录请求期间是否进入过后台。
+      if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+        document.addEventListener('visibilitychange', markPageHiddenDuringRequest);
+      }
 
       try {
         const response = await fetch('/chat/stream', {
@@ -481,7 +512,17 @@ export const useChatStore = defineStore('chat', {
         streamHadError = true;
         const botMsg = requestMessages[botMsgIdx];
         if (!botMsg) return;
-        if (error.name === 'AbortError') {
+        if (wasPageHiddenDuringRequest && this.isTransientNetworkError(error)) {
+          botMsg.isThinking = false;
+          if (!botMsg.text.trim()) {
+            requestMessages.splice(botMsgIdx, 1);
+            if (this.sessionId === requestSessionId) {
+              this.messages = requestMessages;
+            }
+          } else {
+            botMsg.text += '\n\n_(网络连接中断，回答可能不完整)_';
+          }
+        } else if (error.name === 'AbortError') {
           botMsg.isThinking = false;
           if (!botMsg.text) {
             botMsg.text = '(已终止回答)';
@@ -493,6 +534,9 @@ export const useChatStore = defineStore('chat', {
           botMsg.text = `喵呜... 出了点问题：${error.message}`;
         }
       } finally {
+        if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+          document.removeEventListener('visibilitychange', markPageHiddenDuringRequest);
+        }
         if (streamHadError && pendingHitlAtSend && !receivedHitlRequest) {
           this.pendingHitlBySession[requestSessionId] = pendingHitlAtSend;
         }
