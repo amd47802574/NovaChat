@@ -266,6 +266,20 @@ async def generate_session_title(user_text: str) -> str:
     return await loop.run_in_executor(None, lambda: _generate_session_title_sync(user_text))
 
 
+async def persist_persistent_note_later(
+    user_id: str,
+    session_id: str,
+    current_note: str,
+    user_text: str,
+    ai_response: str,
+) -> None:
+    try:
+        next_note = await update_persistent_note(current_note, user_text, ai_response)
+        storage.update_session(user_id, session_id, {"persistent_note": next_note})
+    except Exception as e:
+        print(f"Update persistent note error: {e}")
+
+
 def _update_persistent_note_sync(current_note: str, user_text: str, ai_response: str) -> str:
     try:
         prompt = (
@@ -489,25 +503,11 @@ async def chat_with_agent_stream(
                         full_response += content
                         yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
 
-            if rag_trace:
-                yield f"data: {json.dumps({'type': 'trace', 'rag_trace': rag_trace})}\n\n"
-
-            if next_pending_hitl:
-                yield f"data: {json.dumps({'type': 'hitl_request', 'hitl': _build_hitl_event(next_pending_hitl)})}\n\n"
-
-            yield "data: [DONE]\n\n"
-
             save_meta = dict(metadata)
             if next_pending_hitl:
                 save_meta[PENDING_HITL_KEY] = next_pending_hitl
             else:
                 save_meta[PENDING_HITL_KEY] = None
-                try:
-                    save_meta["persistent_note"] = await update_persistent_note(
-                        persistent_note, effective_user_text, full_response
-                    )
-                except Exception as e:
-                    print(f"Update persistent note error: {e}")
 
             messages.append(AIMessage(content=full_response))
             extra_message_data = [None] * (len(messages) - 1) + [{"rag_trace": rag_trace}]
@@ -518,6 +518,23 @@ async def chat_with_agent_stream(
                 metadata=save_meta,
                 extra_message_data=extra_message_data,
             )
+            if rag_trace:
+                yield f"data: {json.dumps({'type': 'trace', 'rag_trace': rag_trace})}\n\n"
+
+            if next_pending_hitl:
+                yield f"data: {json.dumps({'type': 'hitl_request', 'hitl': _build_hitl_event(next_pending_hitl)})}\n\n"
+
+            if not next_pending_hitl:
+                asyncio.create_task(
+                    persist_persistent_note_later(
+                        user_id,
+                        session_id,
+                        persistent_note,
+                        effective_user_text,
+                        full_response,
+                    )
+                )
+            yield "data: [DONE]\n\n"
             return
 
         request_agent = create_agent_for_request(ctx)
@@ -529,6 +546,7 @@ async def chat_with_agent_stream(
             def _on_title_done(fut):
                 try:
                     title = fut.result()
+                    storage.update_session(user_id, session_id, {"title": title})
                     output_queue.put_nowait(
                         {"type": "session_title", "title": title, "session_id": session_id}
                     )
@@ -613,18 +631,10 @@ async def chat_with_agent_stream(
                 next_pending_hitl["options"],
             )
 
-        if rag_trace:
-            yield f"data: {json.dumps({'type': 'trace', 'rag_trace': rag_trace})}\n\n"
-
-        if next_pending_hitl:
-            yield f"data: {json.dumps({'type': 'hitl_request', 'hitl': _build_hitl_event(next_pending_hitl)})}\n\n"
-
-        yield "data: [DONE]\n\n"
-
         save_meta = dict(metadata)
-        if is_first_message and title_task is not None:
+        if is_first_message and title_task is not None and title_task.done():
             try:
-                save_meta["title"] = await title_task
+                save_meta["title"] = title_task.result()
             except Exception:
                 pass
 
@@ -634,12 +644,6 @@ async def chat_with_agent_stream(
         else:
             if is_hitl_resume and not agent_error:
                 save_meta[PENDING_HITL_KEY] = None
-            try:
-                save_meta["persistent_note"] = await update_persistent_note(
-                    persistent_note, effective_user_text, full_response
-                )
-            except Exception as e:
-                print(f"Update persistent note error: {e}")
 
         messages.append(AIMessage(content=full_response))
         extra_message_data = [None] * (len(messages) - 1) + [{"rag_trace": rag_trace}]
@@ -650,5 +654,22 @@ async def chat_with_agent_stream(
             metadata=save_meta,
             extra_message_data=extra_message_data,
         )
+        if rag_trace:
+            yield f"data: {json.dumps({'type': 'trace', 'rag_trace': rag_trace})}\n\n"
+
+        if next_pending_hitl:
+            yield f"data: {json.dumps({'type': 'hitl_request', 'hitl': _build_hitl_event(next_pending_hitl)})}\n\n"
+
+        if not next_pending_hitl:
+            asyncio.create_task(
+                persist_persistent_note_later(
+                    user_id,
+                    session_id,
+                    persistent_note,
+                    effective_user_text,
+                    full_response,
+                )
+            )
+        yield "data: [DONE]\n\n"
     finally:
         ctx.close()
