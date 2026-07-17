@@ -4,6 +4,48 @@ import { useSessionStore } from './sessions';
 import api from '@/utils/api';
 import type { Message, RagStep, GroupedRagStep, HitlRequest, RagTrace } from '@/types/chat';
 
+const LAST_SESSION_ID_STORAGE_KEY = 'novaLastSessionId';
+const SESSION_ID_URL_PARAM = 'session_id';
+
+const createSessionId = (): string => 'session_' + Date.now();
+
+const getUrlSessionId = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const sessionId = new URL(window.location.href).searchParams.get(SESSION_ID_URL_PARAM)?.trim();
+    return sessionId || null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const getStoredSessionId = (): string | null => {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage.getItem(LAST_SESSION_ID_STORAGE_KEY);
+};
+
+const syncSessionIdToUrl = (sessionId: string) => {
+  if (typeof window === 'undefined' || !window.history?.replaceState) return;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(SESSION_ID_URL_PARAM) === sessionId) return;
+    url.searchParams.set(SESSION_ID_URL_PARAM, sessionId);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch (_) {
+    // URL 同步失败时不影响会话本身切换。
+  }
+};
+
+const rememberSessionId = (sessionId: string) => {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(LAST_SESSION_ID_STORAGE_KEY, sessionId);
+};
+
+const forgetStoredSessionId = () => {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.removeItem(LAST_SESSION_ID_STORAGE_KEY);
+};
+
 export const useChatStore = defineStore('chat', {
   state: () => ({
     messages: [] as Message[],
@@ -11,7 +53,7 @@ export const useChatStore = defineStore('chat', {
     userInput: '',
     isLoading: false,
     activeNav: 'newChat' as 'newChat' | 'history' | 'settings',
-    sessionId: 'session_' + Date.now(),
+    sessionId: getUrlSessionId() || getStoredSessionId() || createSessionId(),
     streamingSessionId: null as string | null,
     abortController: null as AbortController | null,
     pendingHitlBySession: {} as Record<string, HitlRequest | null>,
@@ -110,6 +152,8 @@ export const useChatStore = defineStore('chat', {
         this.syncPendingHitlFromMessages(sessionId);
       }
       this.sessionId = sessionId;
+      rememberSessionId(sessionId);
+      syncSessionIdToUrl(sessionId);
       this.messages = this.ensureSessionMessages(sessionId);
       if (!messages) {
         this.syncPendingHitlFromMessages(sessionId);
@@ -118,7 +162,7 @@ export const useChatStore = defineStore('chat', {
     },
 
     createSessionId(): string {
-      let nextId = 'session_' + Date.now();
+      let nextId = createSessionId();
       while (this.messagesBySession[nextId]) {
         nextId = 'session_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
       }
@@ -307,6 +351,22 @@ export const useChatStore = defineStore('chat', {
           this.messages = [];
         }
         throw new Error(errMsg);
+      }
+    },
+
+    async restoreLastSession() {
+      const restorableSessionId = getUrlSessionId() || getStoredSessionId();
+      if (!restorableSessionId) return false;
+
+      try {
+        await this.loadSession(restorableSessionId);
+        return true;
+      } catch (error) {
+        forgetStoredSessionId();
+        if (this.sessionId === restorableSessionId) {
+          this.handleNewChat();
+        }
+        return false;
       }
     },
 

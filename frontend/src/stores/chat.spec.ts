@@ -20,8 +20,8 @@ type PendingRead = {
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-const createLocalStorageMock = () => {
-  const store = new Map<string, string>();
+const createLocalStorageMock = (initialValues: Record<string, string> = {}) => {
+  const store = new Map<string, string>(Object.entries(initialValues));
   return {
     getItem: vi.fn((key: string) => store.get(key) || null),
     setItem: vi.fn((key: string, value: string) => {
@@ -33,6 +33,28 @@ const createLocalStorageMock = () => {
     clear: vi.fn(() => {
       store.clear();
     }),
+  };
+};
+
+const createWindowMock = (href = 'https://example.test/chat') => {
+  let currentUrl = new URL(href);
+  const history = {
+    state: null as unknown,
+    replaceState: vi.fn((state: unknown, _title: string, nextUrl?: string | URL | null) => {
+      history.state = state;
+      if (nextUrl) {
+        currentUrl = new URL(String(nextUrl), currentUrl.href);
+      }
+    }),
+  };
+
+  return {
+    get location() {
+      return {
+        href: currentUrl.href,
+      };
+    },
+    history,
   };
 };
 
@@ -161,6 +183,83 @@ describe('chat store streaming sessions', () => {
     vi.stubGlobal('localStorage', createLocalStorageMock());
     vi.stubGlobal('alert', vi.fn());
     vi.stubGlobal('confirm', vi.fn(() => true));
+  });
+
+  it('remembers the currently viewed session id for page refreshes', () => {
+    const { chatStore } = setupStores();
+
+    chatStore.setViewedSession('session_old', []);
+
+    expect(localStorage.setItem).toHaveBeenCalledWith('novaLastSessionId', 'session_old');
+    expect(chatStore.sessionId).toBe('session_old');
+  });
+
+  it('syncs the currently viewed session id to the URL query', () => {
+    const windowMock = createWindowMock('https://example.test/chat?from=mobile#latest');
+    vi.stubGlobal('window', windowMock);
+    const { chatStore } = setupStores();
+
+    chatStore.setViewedSession('session_old', []);
+
+    expect(windowMock.location.href).toBe('https://example.test/chat?from=mobile&session_id=session_old#latest');
+    expect(windowMock.history.replaceState).toHaveBeenCalledWith(
+      null,
+      '',
+      '/chat?from=mobile&session_id=session_old#latest'
+    );
+  });
+
+  it('restores the last viewed session after the store is recreated', async () => {
+    vi.stubGlobal('localStorage', createLocalStorageMock({
+      novaLastSessionId: 'session_old',
+    }));
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        messages: [
+          { type: 'human', content: '刷新前的问题' },
+          { type: 'ai', content: '刷新前的回答' },
+        ],
+      },
+    });
+    setActivePinia(createPinia());
+
+    const chatStore = useChatStore();
+    const restored = await chatStore.restoreLastSession();
+
+    expect(restored).toBe(true);
+    expect(api.get).toHaveBeenCalledWith('/sessions/session_old');
+    expect(chatStore.sessionId).toBe('session_old');
+    expect(chatStore.messages.map((msg) => msg.text)).toEqual([
+      '刷新前的问题',
+      '刷新前的回答',
+    ]);
+  });
+
+  it('prefers the URL session id over local storage when restoring after refresh', async () => {
+    vi.stubGlobal('localStorage', createLocalStorageMock({
+      novaLastSessionId: 'session_local',
+    }));
+    vi.stubGlobal('window', createWindowMock('https://example.test/chat?session_id=session_url'));
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        messages: [
+          { type: 'human', content: 'URL 里的问题' },
+          { type: 'ai', content: 'URL 里的回答' },
+        ],
+      },
+    });
+    setActivePinia(createPinia());
+
+    const chatStore = useChatStore();
+    const restored = await chatStore.restoreLastSession();
+
+    expect(restored).toBe(true);
+    expect(api.get).toHaveBeenCalledWith('/sessions/session_url');
+    expect(chatStore.sessionId).toBe('session_url');
+    expect(chatStore.messages.map((msg) => msg.text)).toEqual([
+      'URL 里的问题',
+      'URL 里的回答',
+    ]);
   });
 
   it('creates a local history session with the user message and thinking placeholder immediately', async () => {

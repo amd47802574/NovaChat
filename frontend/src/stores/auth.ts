@@ -2,6 +2,18 @@ import { defineStore } from 'pinia';
 import api from '@/utils/api';
 import type { CurrentUser } from '@/types/user';
 
+const clearLastSessionUrlParam = () => {
+  if (typeof window === 'undefined' || !window.history?.replaceState) return;
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('session_id')) return;
+    url.searchParams.delete('session_id');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch (_) {
+    // URL 清理失败时不影响退出登录。
+  }
+};
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('accessToken') || '',
@@ -76,6 +88,8 @@ export const useAuthStore = defineStore('auth', {
       this.token = '';
       this.currentUser = null;
       localStorage.removeItem('accessToken');
+      localStorage.removeItem('novaLastSessionId');
+      clearLastSessionUrlParam();
     },
   },
 });

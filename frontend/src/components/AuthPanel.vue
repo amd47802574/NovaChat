@@ -82,8 +82,12 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth';
+import { useChatStore } from '@/stores/chat';
+import { useSessionStore } from '@/stores/sessions';
 
 const authStore = useAuthStore();
+const chatStore = useChatStore();
+const sessionStore = useSessionStore();
 
 const toggleAuthMode = () => {
   authStore.authMode = authStore.authMode === 'login' ? 'register' : 'login';
@@ -92,6 +96,13 @@ const toggleAuthMode = () => {
 const onSubmit = async () => {
   try {
     await authStore.handleAuthSubmit();
+    try {
+      await sessionStore.fetchSessions();
+      chatStore.mergeCachedSessionsIntoHistory();
+    } catch (_) {
+      // 历史列表加载失败不影响恢复当前会话内容。
+    }
+    await chatStore.restoreLastSession();
   } catch (error: any) {
     alert(error.message);
   }

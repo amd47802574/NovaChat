@@ -21,9 +21,11 @@ import DocumentSettings from '@/components/Documents/DocumentSettings.vue';
 
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
+import { useSessionStore } from '@/stores/sessions';
 
 const authStore = useAuthStore();
 const chatStore = useChatStore();
+const sessionStore = useSessionStore();
 
 const handleUnauthorized = () => {
   authStore.handleLogout();
@@ -37,6 +39,13 @@ onMounted(async () => {
   if (authStore.token) {
     try {
       await authStore.fetchMe();
+      try {
+        await sessionStore.fetchSessions();
+        chatStore.mergeCachedSessionsIntoHistory();
+      } catch (_) {
+        // 历史列表加载失败不影响恢复当前会话内容。
+      }
+      await chatStore.restoreLastSession();
     } catch (_) {
       authStore.handleLogout();
     }
