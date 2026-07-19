@@ -56,6 +56,15 @@ describe('document upload polling', () => {
     expect(unmountedBlock?.[1]).toContain('stopAllDeleteJobPolling');
   });
 
+  it('accepts markdown files in the upload input', () => {
+    const source = readFileSync(
+      new URL('../components/Documents/UploadSection.vue', import.meta.url),
+      'utf8'
+    );
+
+    expect(source).toContain('accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.htm,.md,.markdown"');
+  });
+
   it('continues polling upload progress until the active job completes', async () => {
     const store = useDocumentStore();
     const runningJob = createUploadJob();

@@ -1,6 +1,4 @@
 """文档向量化并写入 Milvus - 支持密集+稀疏向量"""
-import os
-
 from backend.indexing.embedding import EmbeddingService, embedding_service as _default_embedding_service
 from backend.indexing.milvus_client import MilvusStore, get_milvus_store
 
@@ -16,7 +14,7 @@ class MilvusWriter:
         if not documents:
             return
 
-        dense_dim = int(os.getenv("DENSE_EMBEDDING_DIM", "1024"))
+        dense_dim = self.embedding_service.get_embedding_dimension()
 
         total = len(documents)
         self.milvus_manager.init_collection(dense_dim)

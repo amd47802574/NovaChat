@@ -6,7 +6,7 @@
       </button>
       <div>
         <h2><i class="fas fa-cog"></i> 文档管理</h2>
-        <p>上传文档进行向量化处理，支持 PDF 和 Word、Excel 格式</p>
+        <p>上传文档进行向量化处理，支持 PDF 和 Word、Excel、Markdown 格式</p>
       </div>
     </div>
 

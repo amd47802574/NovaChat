@@ -6,7 +6,7 @@
         type="file" 
         ref="fileInputRef" 
         @change="onFileSelect"
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.htm"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.htm,.md,.markdown"
         style="display: none"
       />
       <button @click="triggerFileSelect" class="upload-btn">

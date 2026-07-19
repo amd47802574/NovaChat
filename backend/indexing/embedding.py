@@ -1,6 +1,10 @@
-"""文本向量化服务 - 只支持密集向量（由 Milvus 2.5+ 原生支持中文分词与 BM25 全文检索）"""
-import os
+﻿import os
+
 from langchain_huggingface import HuggingFaceEmbeddings
+
+from backend.env import load_env
+
+load_env()
 
 
 def _create_dense_embedder() -> HuggingFaceEmbeddings:
@@ -14,10 +18,9 @@ def _create_dense_embedder() -> HuggingFaceEmbeddings:
 
 
 class EmbeddingService:
-    """文本向量化服务 - 密集向量本地模型"""
-
     def __init__(self, state_path=None):
         self._embedder = _create_dense_embedder()
+        self._dimension: int | None = None
 
     def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -25,8 +28,15 @@ class EmbeddingService:
         try:
             return self._embedder.embed_documents(texts)
         except Exception as e:
-            raise Exception(f"本地密集嵌入模型调用失败: {str(e)}") from e
+            raise Exception(f"failed to generate embeddings: {str(e)}") from e
+
+    def get_embedding_dimension(self) -> int:
+        if self._dimension is None:
+            embeddings = self.get_embeddings(["dimension probe"])
+            if not embeddings or not embeddings[0]:
+                raise RuntimeError("failed to determine embedding dimension")
+            self._dimension = len(embeddings[0])
+        return self._dimension
 
 
-# 全进程唯一实例
 embedding_service = EmbeddingService()

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Iterator, TypeVar
@@ -10,6 +11,7 @@ from pymilvus import AnnSearchRequest, DataType, MilvusClient, RRFRanker, Functi
 
 QUERY_MAX_LIMIT = 16384
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -71,9 +73,39 @@ class MilvusStore:
             yield client
 
     @staticmethod
+    def _get_collection_dense_dim(client: MilvusClient, collection_name: str) -> int | None:
+        description = client.describe_collection(collection_name=collection_name)
+        fields = description.get("fields", []) if isinstance(description, dict) else []
+        for field in fields:
+            if not isinstance(field, dict):
+                continue
+            field_name = field.get("name") or field.get("field_name")
+            if field_name != "dense_embedding":
+                continue
+            params = field.get("params") or {}
+            dim = params.get("dim", field.get("dim"))
+            if dim is None:
+                return None
+            try:
+                return int(dim)
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    @staticmethod
     def ensure_collection(client: MilvusClient, collection_name: str, dense_dim: int) -> None:
         if client.has_collection(collection_name):
-            return
+            current_dim = MilvusStore._get_collection_dense_dim(client, collection_name)
+            if current_dim is not None and current_dim != dense_dim:
+                logger.warning(
+                    "Milvus collection %s dimension mismatch detected: existing=%s, expected=%s. Recreating collection.",
+                    collection_name,
+                    current_dim,
+                    dense_dim,
+                )
+                client.drop_collection(collection_name=collection_name)
+            else:
+                return
 
         schema = client.create_schema(auto_id=True, enable_dynamic_field=True)
         schema.add_field("id", DataType.INT64, is_primary=True, auto_id=True)
@@ -126,7 +158,9 @@ class MilvusStore:
 
     def init_collection(self, dense_dim: int | None = None) -> None:
         if dense_dim is None:
-            dense_dim = int(os.getenv("DENSE_EMBEDDING_DIM", "1024"))
+            from backend.indexing.embedding import embedding_service
+
+            dense_dim = embedding_service.get_embedding_dimension()
 
         def _init(client: MilvusClient) -> None:
             self.ensure_collection(client, self.collection_name, dense_dim)

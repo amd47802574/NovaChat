@@ -4,7 +4,12 @@ import re
 import unicodedata
 from typing import Dict, List
 
-from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader, UnstructuredExcelLoader
+from langchain_community.document_loaders import (
+    Docx2txtLoader,
+    PyPDFLoader,
+    TextLoader,
+    UnstructuredExcelLoader,
+)
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # 编译非打印 C0/C1 控制字符的正则（保留常规排版字：\t, \n, \r）
@@ -210,6 +215,9 @@ class DocumentLoader:
 
             raw_docs = load_html_for_document_loader(file_path, filename)
             return self._load_from_langchain_docs(raw_docs, file_path, filename, doc_type)
+        elif file_lower.endswith((".md", ".markdown")):
+            doc_type = "Markdown"
+            loader = TextLoader(file_path, encoding="utf-8")
         else:
             raise ValueError(f"不支持的文件类型: {filename}")
 
@@ -229,6 +237,7 @@ class DocumentLoader:
                 or file_lower.endswith((".docx", ".doc"))
                 or file_lower.endswith((".xlsx", ".xls"))
                 or file_lower.endswith((".html", ".htm"))
+                or file_lower.endswith((".md", ".markdown"))
             ):
                 continue
 
