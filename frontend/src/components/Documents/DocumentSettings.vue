@@ -49,7 +49,7 @@ const documentStore = useDocumentStore();
 const chatStore = useChatStore();
 
 const backToChat = () => {
-  chatStore.activeNav = 'newChat';
+  chatStore.setActiveNav('newChat');
 };
 
 const onRefresh = async () => {

@@ -6,6 +6,8 @@ import type { Message, RagStep, GroupedRagStep, HitlRequest, RagTrace } from '@/
 
 const LAST_SESSION_ID_STORAGE_KEY = 'novaLastSessionId';
 const SESSION_ID_URL_PARAM = 'session_id';
+const VIEW_URL_PARAM = 'view';
+const SETTINGS_VIEW = 'settings';
 
 const createSessionId = (): string => 'session_' + Date.now();
 
@@ -16,6 +18,35 @@ const getUrlSessionId = (): string | null => {
     return sessionId || null;
   } catch (_) {
     return null;
+  }
+};
+
+// 从 URL 读取当前视图，仅识别文档管理（settings），其余视为默认聊天视图。
+const getUrlView = (): 'settings' | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const view = new URL(window.location.href).searchParams.get(VIEW_URL_PARAM)?.trim();
+    return view === SETTINGS_VIEW ? SETTINGS_VIEW : null;
+  } catch (_) {
+    return null;
+  }
+};
+
+// 把当前视图同步到 URL：settings 写入参数，其余视图移除参数，保证刷新后停留在正确页面。
+const syncViewToUrl = (nav: 'newChat' | 'history' | 'settings') => {
+  if (typeof window === 'undefined' || !window.history?.replaceState) return;
+  try {
+    const url = new URL(window.location.href);
+    if (nav === SETTINGS_VIEW) {
+      if (url.searchParams.get(VIEW_URL_PARAM) === SETTINGS_VIEW) return;
+      url.searchParams.set(VIEW_URL_PARAM, SETTINGS_VIEW);
+    } else {
+      if (!url.searchParams.has(VIEW_URL_PARAM)) return;
+      url.searchParams.delete(VIEW_URL_PARAM);
+    }
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch (_) {
+    // URL 同步失败时不影响视图本身切换。
   }
 };
 
@@ -52,7 +83,7 @@ export const useChatStore = defineStore('chat', {
     messagesBySession: {} as Record<string, Message[]>,
     userInput: '',
     isLoading: false,
-    activeNav: 'newChat' as 'newChat' | 'history' | 'settings',
+    activeNav: (getUrlView() === SETTINGS_VIEW ? 'settings' : 'newChat') as 'newChat' | 'history' | 'settings',
     sessionId: getUrlSessionId() || getStoredSessionId() || createSessionId(),
     streamingSessionId: null as string | null,
     abortController: null as AbortController | null,
@@ -146,7 +177,7 @@ export const useChatStore = defineStore('chat', {
       this.userInput = option;
     },
 
-    setViewedSession(sessionId: string, messages?: Message[]) {
+    setViewedSession(sessionId: string, messages?: Message[], options?: { keepNav?: boolean }) {
       if (messages) {
         this.messagesBySession[sessionId] = messages;
         this.syncPendingHitlFromMessages(sessionId);
@@ -158,7 +189,16 @@ export const useChatStore = defineStore('chat', {
       if (!messages) {
         this.syncPendingHitlFromMessages(sessionId);
       }
-      this.activeNav = 'newChat';
+      // 刷新后恢复会话时保留当前视图（如文档管理），避免被强制切回聊天页。
+      if (!options?.keepNav) {
+        this.setActiveNav('newChat');
+      }
+    },
+
+    // 统一切换主视图，并把 settings 视图状态同步到 URL，保证刷新后仍停留在文档管理页。
+    setActiveNav(nav: 'newChat' | 'history' | 'settings') {
+      this.activeNav = nav;
+      syncViewToUrl(nav);
     },
 
     createSessionId(): string {
@@ -323,11 +363,11 @@ export const useChatStore = defineStore('chat', {
       }
     },
 
-    async loadSession(sessionId: string) {
+    async loadSession(sessionId: string, options?: { keepNav?: boolean }) {
       const sessionStore = useSessionStore();
       const cachedMessages = this.messagesBySession[sessionId];
 
-      this.setViewedSession(sessionId, cachedMessages || []);
+      this.setViewedSession(sessionId, cachedMessages || [], options);
       sessionStore.showHistorySidebar = false;
 
       if (sessionId === this.streamingSessionId) {
@@ -358,8 +398,11 @@ export const useChatStore = defineStore('chat', {
       const restorableSessionId = getUrlSessionId() || getStoredSessionId();
       if (!restorableSessionId) return false;
 
+      // 刷新时若 URL 指向文档管理视图，恢复会话过程中需保留该视图，避免被切回聊天页。
+      const keepNav = getUrlView() === SETTINGS_VIEW;
+
       try {
-        await this.loadSession(restorableSessionId);
+        await this.loadSession(restorableSessionId, { keepNav });
         return true;
       } catch (error) {
         forgetStoredSessionId();

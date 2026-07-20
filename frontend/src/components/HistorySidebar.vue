@@ -239,7 +239,7 @@ const toggleTheme = () => {
 };
 
 const openSettings = () => {
-  chatStore.activeNav = 'settings';
+  chatStore.setActiveNav('settings');
   closeDrawer();
 };
 

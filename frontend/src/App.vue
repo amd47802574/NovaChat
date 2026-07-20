@@ -39,6 +39,10 @@ onMounted(async () => {
   if (authStore.token) {
     try {
       await authStore.fetchMe();
+      // 文档管理仅限管理员：非管理员若通过 URL 直达 settings 视图，恢复登录后切回聊天页。
+      if (chatStore.activeNav === 'settings' && !authStore.isAdmin) {
+        chatStore.setActiveNav('newChat');
+      }
       try {
         await sessionStore.fetchSessions();
         chatStore.mergeCachedSessionsIntoHistory();

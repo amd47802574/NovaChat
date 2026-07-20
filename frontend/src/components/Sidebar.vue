@@ -51,7 +51,7 @@ const onNewChat = () => {
 };
 
 const onHistory = async () => {
-  chatStore.activeNav = 'history';
+  chatStore.setActiveNav('history');
   sessionStore.showHistorySidebar = !sessionStore.showHistorySidebar;
   if (sessionStore.showHistorySidebar) {
     try {
@@ -68,7 +68,7 @@ const onSettings = () => {
     alert('仅管理员可访问文档管理');
     return;
   }
-  chatStore.activeNav = 'settings';
+  chatStore.setActiveNav('settings');
   sessionStore.showHistorySidebar = false;
 };
 </script>

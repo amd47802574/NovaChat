@@ -262,6 +262,50 @@ describe('chat store streaming sessions', () => {
     ]);
   });
 
+  it('syncs the settings view to the URL and clears it when returning to chat', () => {
+    const windowMock = createWindowMock('https://example.test/chat?session_id=session_current');
+    vi.stubGlobal('window', windowMock);
+    const { chatStore } = setupStores();
+
+    chatStore.setActiveNav('settings');
+    expect(windowMock.location.href).toBe(
+      'https://example.test/chat?session_id=session_current&view=settings'
+    );
+
+    chatStore.setActiveNav('newChat');
+    expect(windowMock.location.href).toBe('https://example.test/chat?session_id=session_current');
+  });
+
+  it('keeps the settings view when restoring a session after refreshing the documents page', async () => {
+    vi.stubGlobal('localStorage', createLocalStorageMock({
+      novaLastSessionId: 'session_old',
+    }));
+    vi.stubGlobal(
+      'window',
+      createWindowMock('https://example.test/chat?session_id=session_old&view=settings')
+    );
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        messages: [
+          { type: 'human', content: '刷新前的问题' },
+          { type: 'ai', content: '刷新前的回答' },
+        ],
+      },
+    });
+    setActivePinia(createPinia());
+
+    const chatStore = useChatStore();
+    // 初始状态应从 URL 识别出文档管理视图。
+    expect(chatStore.activeNav).toBe('settings');
+
+    const restored = await chatStore.restoreLastSession();
+
+    expect(restored).toBe(true);
+    expect(chatStore.sessionId).toBe('session_old');
+    // 恢复会话后仍停留在文档管理视图，不被切回聊天页。
+    expect(chatStore.activeNav).toBe('settings');
+  });
+
   it('creates a local history session with the user message and thinking placeholder immediately', async () => {
     const stream = createControlledSseFetch();
     vi.stubGlobal('fetch', stream.fetchMock);
