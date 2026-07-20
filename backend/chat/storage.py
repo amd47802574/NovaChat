@@ -1,10 +1,22 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from backend.db.models import ChatMessage, ChatSession, User
 from backend.infra.cache import cache
 from backend.infra.database import SessionLocal
+
+
+def _isoformat_utc(dt: datetime) -> str:
+    """把时间戳序列化为带 UTC 时区标记的 ISO 字符串。
+
+    数据库里的时间以 naive UTC 存储（datetime.utcnow），直接 isoformat()
+    会丢失时区标记，前端 new Date() 会按本地时区解析，东8区因此少算 8 小时。
+    这里统一补上 UTC 标记，让前端正确按本地时区展示。
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 
 class ConversationStorage:
@@ -82,7 +94,7 @@ class ConversationStorage:
                     {
                         "type": msg.type,
                         "content": str(msg.content),
-                        "timestamp": now.isoformat(),
+                        "timestamp": _isoformat_utc(now),
                         "rag_trace": rag_trace,
                     }
                 )
@@ -152,7 +164,7 @@ class ConversationStorage:
                         "session_id": s.session_id,
                         "title": meta.get("title") or s.session_id,
                         "pinned": bool(meta.get("pinned", False)),
-                        "updated_at": s.updated_at.isoformat(),
+                        "updated_at": _isoformat_utc(s.updated_at),
                         "message_count": count,
                     }
                 )
@@ -189,7 +201,7 @@ class ConversationStorage:
                 {
                     "type": row.message_type,
                     "content": row.content,
-                    "timestamp": row.timestamp.isoformat(),
+                    "timestamp": _isoformat_utc(row.timestamp),
                     "rag_trace": row.rag_trace,
                 }
                 for row in rows
