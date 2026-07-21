@@ -178,5 +178,61 @@ class ChatHitlResumeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("用户补充：\n丹瑾", fake_model.messages[-1][-1].content)
 
 
+class FailingStreamAgent:
+    def __init__(self, error_message: str, chunks=None):
+        self.error_message = error_message
+        self.chunks = chunks or []
+
+    async def astream(self, payload, stream_mode=None, config=None):
+        for chunk in self.chunks:
+            yield AIMessageChunk(content=chunk), {}
+        raise RuntimeError(self.error_message)
+
+
+class ChatStreamErrorPersistTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stream_agent_error_is_persisted_in_assistant_message(self):
+        fake_storage = FakeStorage()
+        update_note = AsyncMock(return_value="updated note")
+        error_message = "Error code: 401 - Invalid API Key"
+
+        def make_agent(ctx):
+            return FailingStreamAgent(error_message)
+
+        with (
+            patch.object(service, "storage", fake_storage),
+            patch.object(service, "create_agent_for_request", make_agent),
+            patch.object(service, "generate_session_title", AsyncMock(return_value="密钥问题")),
+            patch.object(service, "update_persistent_note", update_note),
+        ):
+            chunks = await _collect_stream("你好", "u", "s")
+
+        events = _parse_sse_events(chunks)
+        error_events = [event for event in events if event.get("type") == "error"]
+        self.assertEqual(1, len(error_events))
+        self.assertEqual(error_message, error_events[0]["content"])
+        self.assertEqual(f"[Error: {error_message}]", fake_storage.messages[-1].content)
+        update_note.assert_not_called()
+
+    async def test_stream_agent_error_appends_to_partial_content(self):
+        fake_storage = FakeStorage()
+        error_message = "Error code: 401 - Invalid API Key"
+
+        def make_agent(ctx):
+            return FailingStreamAgent(error_message, chunks=["部分回答"])
+
+        with (
+            patch.object(service, "storage", fake_storage),
+            patch.object(service, "create_agent_for_request", make_agent),
+            patch.object(service, "generate_session_title", AsyncMock(return_value="部分回答")),
+            patch.object(service, "update_persistent_note", AsyncMock()),
+        ):
+            await _collect_stream("继续", "u", "s2")
+
+        self.assertEqual(
+            f"部分回答\n[Error: {error_message}]",
+            fake_storage.messages[-1].content,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

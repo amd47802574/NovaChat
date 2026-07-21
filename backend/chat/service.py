@@ -146,6 +146,15 @@ def _extract_ai_content(msg) -> str:
     return str(content or "")
 
 
+def _append_error_content(existing: str, error: str) -> str:
+    """把流式错误写入助手消息，保证刷新会话后仍能看到失败原因。"""
+    error_text = f"[Error: {error}]"
+    existing = (existing or "").rstrip()
+    if not existing:
+        return error_text
+    return f"{existing}\n{error_text}"
+
+
 def _format_retrieved_chunks(docs: list[dict]) -> str:
     formatted = []
     for i, result in enumerate(docs, 1):
@@ -476,6 +485,7 @@ async def chat_with_agent_stream(
             rag_trace = rag_result.get("rag_trace") if isinstance(rag_result, dict) else None
             next_pending_hitl = None
             full_response = ""
+            resume_error = None
 
             if _is_hitl_trace(rag_trace):
                 next_pending_hitl = _build_pending_hitl(
@@ -498,12 +508,18 @@ async def chat_with_agent_stream(
                     user_text,
                     rag_result.get("docs") or [],
                 )
-                async for msg in model.astream(answer_messages):
-                    content = _extract_ai_content(msg)
-                    if content:
-                        full_response += content
-                        yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
-                if not full_response.strip():
+                try:
+                    async for msg in model.astream(answer_messages):
+                        content = _extract_ai_content(msg)
+                        if content:
+                            full_response += content
+                            yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
+                except Exception as e:
+                    resume_error = str(e)
+                    yield f"data: {json.dumps({'type': 'error', 'content': resume_error})}\n\n"
+                if resume_error:
+                    full_response = _append_error_content(full_response, resume_error)
+                elif not full_response.strip():
                     full_response = "我已根据你的补充完成检索，但暂时没能生成完整回答。请再试一次，或换个更具体的问法。"
                     yield f"data: {json.dumps({'type': 'content', 'content': full_response})}\n\n"
 
@@ -528,7 +544,7 @@ async def chat_with_agent_stream(
             if next_pending_hitl:
                 yield f"data: {json.dumps({'type': 'hitl_request', 'hitl': _build_hitl_event(next_pending_hitl)})}\n\n"
 
-            if not next_pending_hitl:
+            if not next_pending_hitl and not resume_error:
                 asyncio.create_task(
                     persist_persistent_note_later(
                         user_id,
@@ -649,6 +665,10 @@ async def chat_with_agent_stream(
             if is_hitl_resume and not agent_error:
                 save_meta[PENDING_HITL_KEY] = None
 
+        # 密钥失效等流式错误此前只推给前端，落库为空助手消息，刷新后提示会消失。
+        if agent_error and not next_pending_hitl:
+            full_response = _append_error_content(full_response, agent_error)
+
         messages.append(AIMessage(content=full_response))
         extra_message_data = [None] * (len(messages) - 1) + [{"rag_trace": rag_trace}]
         storage.save(
@@ -664,7 +684,7 @@ async def chat_with_agent_stream(
         if next_pending_hitl:
             yield f"data: {json.dumps({'type': 'hitl_request', 'hitl': _build_hitl_event(next_pending_hitl)})}\n\n"
 
-        if not next_pending_hitl:
+        if not next_pending_hitl and not agent_error:
             asyncio.create_task(
                 persist_persistent_note_later(
                     user_id,
