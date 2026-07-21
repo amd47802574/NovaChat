@@ -2982,6 +2982,58 @@ button {
     color: var(--nova-primary);
 }
 
+.message-actions {
+    display: flex;
+    align-items: center;
+    margin-top: 6px;
+    opacity: 0.88;
+    transition: opacity 0.18s ease;
+}
+
+@media (hover: hover) {
+    .message-actions {
+        opacity: 0.55;
+    }
+
+    .message:hover .message-actions,
+    .message:focus-within .message-actions {
+        opacity: 1;
+    }
+}
+
+.user-message .message-actions {
+    justify-content: flex-end;
+}
+
+.bot-message .message-actions {
+    justify-content: flex-start;
+}
+
+.copy-message-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--nova-text-muted);
+    font-size: 0.78rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.copy-message-btn:hover,
+.copy-message-btn.copied {
+    background: var(--nova-surface);
+    color: var(--nova-primary);
+}
+
+.copy-message-btn:focus-visible {
+    outline: 2px solid var(--nova-primary);
+    outline-offset: 2px;
+}
+
 .message-content .code-block pre {
     margin: 0;
     padding: 14px;

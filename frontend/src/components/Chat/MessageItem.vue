@@ -5,13 +5,18 @@
   >
     <!-- User or finished AI answer -->
     <template v-if="msg.isUser">
-      <MessageContent 
-        :text="msg.text" 
-        :is-user="true" 
-        :msg-index="msgIndex" 
+      <MessageContent
+        :text="msg.text"
+        :is-user="true"
+        :msg-index="msgIndex"
+      />
+      <MessageCopyButton
+        v-if="canCopy"
+        :copied="copied"
+        @copy="copyMessage"
       />
     </template>
-    
+
     <template v-else>
       <div v-if="msg.hitlResumeText" class="hitl-resume-note">
         <i class="fas fa-rotate-right"></i>
@@ -19,29 +24,34 @@
       </div>
 
       <!-- RAG Thinking/Trace view -->
-      <ThinkingTrace 
-        v-if="msg.isThinking && !msg.text" 
-        :msg="msg" 
-        :msg-index="msgIndex" 
+      <ThinkingTrace
+        v-if="msg.isThinking && !msg.text"
+        :msg="msg"
+        :msg-index="msgIndex"
       />
-      
+
       <!-- Actual response text -->
       <template v-else>
         <MessageContent
-          :text="msg.text" 
-          :is-user="false" 
-          :msg-index="msgIndex" 
+          :text="msg.text"
+          :is-user="false"
+          :msg-index="msgIndex"
           @cite-click="onCiteClick"
         />
-        
+        <MessageCopyButton
+          v-if="canCopy"
+          :copied="copied"
+          @copy="copyMessage"
+        />
+
         <!-- RAG Source documents -->
-        <References 
+        <References
           ref="referencesRef"
-          :msg="msg" 
-          :msg-index="msgIndex" 
+          :msg="msg"
+          :msg-index="msgIndex"
           @cite-click="onCiteClick"
         />
-        
+
         <!-- Deep retrieval traces logs -->
         <RetrievalTraceDetails :msg="msg" />
       </template>
@@ -50,8 +60,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import MessageContent from './MessageContent.vue';
+import MessageCopyButton from './MessageCopyButton.vue';
 import ThinkingTrace from './ThinkingTrace.vue';
 import References from './References.vue';
 import RetrievalTraceDetails from './RetrievalTraceDetails.vue';
@@ -67,6 +78,10 @@ const emit = defineEmits<{
 }>();
 
 const referencesRef = ref<InstanceType<typeof References> | null>(null);
+const copied = ref(false);
+let copiedTimer: number | null = null;
+
+const canCopy = computed(() => Boolean(props.msg.text?.trim()));
 
 const openReferences = () => {
   referencesRef.value?.openDetails();
@@ -79,4 +94,45 @@ defineExpose({
 const onCiteClick = (msgIndex: number, chunkIndex: number) => {
   emit('cite-click', msgIndex, chunkIndex);
 };
+
+const markCopied = () => {
+  copied.value = true;
+  if (copiedTimer !== null) {
+    window.clearTimeout(copiedTimer);
+  }
+  copiedTimer = window.setTimeout(() => {
+    copied.value = false;
+    copiedTimer = null;
+  }, 1400);
+};
+
+const copyMessage = async () => {
+  const text = props.msg.text?.trim();
+  if (!text) return;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    markCopied();
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
+      markCopied();
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  }
+};
+
+onBeforeUnmount(() => {
+  if (copiedTimer !== null) {
+    window.clearTimeout(copiedTimer);
+  }
+});
 </script>
