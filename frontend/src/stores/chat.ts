@@ -643,6 +643,13 @@ export const useChatStore = defineStore('chat', {
         if (streamHadError && pendingHitlAtSend && !receivedHitlRequest) {
           this.pendingHitlBySession[requestSessionId] = pendingHitlAtSend;
         }
+        const botMsg = requestMessages[botMsgIdx];
+        if (botMsg?.isThinking) {
+          botMsg.isThinking = false;
+          if (!botMsg.text?.trim() && !botMsg.isHitlRequest) {
+            botMsg.text = '这次没有生成完整回答，请再试一次。';
+          }
+        }
         this.isLoading = false;
         this.streamingSessionId = null;
         this.abortController = null;

@@ -1,6 +1,7 @@
 from typing import Annotated, Any, Literal, TypedDict, List, Optional
 import operator
 import os
+import re
 from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph, END
 from langgraph.types import Send
@@ -86,14 +87,22 @@ EVIDENCE_GRADE_PROMPT = (
     "- relevance: none 表示主题不相关；weak 表示主题接近但证据弱；strong 表示主题明确相关。\n"
     "- answerability: none 表示不能回答；partial 表示有部分线索但不足以给确定答案；"
     "sufficient 表示片段能直接或组合支撑答案。\n"
-    "- ambiguity: missing_slot 表示缺少角色名、版本、文件类型、模块名、产品线等关键条件；"
+    "- ambiguity: missing_slot 表示缺少角色名、版本、文件类型、模块名、产品线、人群"
+    "（应届/职场/管理）、目标岗位等关键条件；"
     "multiple_candidates 表示多个候选方向都可能相关；none 表示无明显歧义。\n"
     "- route 只能选择：answer、rewrite、clarify、scope_select、no_knowledge。\n"
-    "  answer: relevance=strong 且 answerability=sufficient。\n"
+    "  answer: relevance=strong 且 answerability=sufficient，且问题目标单一、无明显多方向。\n"
     "  rewrite: 有相关信号，但像是问法、别名或泛化程度导致证据不足。\n"
     "  clarify: 缺少关键条件，需要用户补充。\n"
     "  scope_select: 多个候选方向都相关，需要用户选择。\n"
     "  no_knowledge: 无召回或主题不相关。\n"
+    "- 重要优先级（宁可先问用户，也不要直接堆砌长答案）：\n"
+    "  1) 开放式问题（怎么/如何/怎样优化、提升、过关、改进等）且检索片段覆盖多个独立主题"
+    "（如流程、写法、ATS、黑名单、特殊情况），必须 route=scope_select，"
+    "ambiguity=multiple_candidates，并给出 3-5 个 hitl_options。\n"
+    "  2) 咨询建议类问题缺少人群、岗位、年限、行业等关键槽位时，必须 route=clarify，"
+    "ambiguity=missing_slot，并填写 missing_slots。\n"
+    "  3) 只有问题目标单一、槽位齐全、证据指向同一答案路径时，才允许 route=answer。\n"
     "- 如果 route 是 clarify 或 scope_select，请给 hitl_prompt；如果能列出选项，请给 hitl_options。"
 )
 
@@ -388,6 +397,86 @@ def _default_hitl_prompt(route: str, grade: EvidenceGrade) -> str:
     return "我找到了相关内容，但证据不足以确定答案。请补充一下你具体想问的条件。"
 
 
+_OPEN_ENDED_MARKERS = ("怎么", "如何", "怎样", "有哪些", "哪些方法", "怎么办", "如何才能")
+_CONJUNCTIVE_MARKERS = ("对比", "比较", "区别", "差异", "分别", "优缺点", "以及它们")
+_SECTION_LABEL_RE = re.compile(
+    r"(?:^|\n)\s{0,3}#{1,3}\s+([^\n]{2,40})"
+    r"|(?:^|\n)\s*([一二三四五六七八九十]+[、.．]\s*[^\n]{2,40})"
+    r"|(?:^|\n)\s*(\d+[、.．]\s*[^\n]{2,40})"
+)
+
+
+def _question_is_open_ended(question: str) -> bool:
+    """开放式咨询题：多方向都可能成立，适合先让用户选范围。"""
+    q = (question or "").strip()
+    if not q:
+        return False
+    if any(marker in q for marker in _CONJUNCTIVE_MARKERS):
+        return False
+    return any(marker in q for marker in _OPEN_ENDED_MARKERS)
+
+
+def _should_offer_scope_select(
+    question: str,
+    *,
+    sub_questions: List[str] | None = None,
+    docs: List[dict] | None = None,
+    options: List[str] | None = None,
+) -> bool:
+    if not _question_is_open_ended(question):
+        return False
+    if sub_questions is not None:
+        return len([sq for sq in sub_questions if sq]) >= 2
+    option_count = len([opt for opt in (options or []) if opt])
+    if option_count >= 2:
+        return True
+    return len(docs or []) >= 3
+
+
+def _scope_options_from_docs(docs: List[dict]) -> List[str]:
+    """从召回片段提取可选方向：优先章节标题，其次文件名。"""
+    options: List[str] = []
+    for doc in docs or []:
+        text = doc.get("text") or ""
+        for match in _SECTION_LABEL_RE.finditer(text):
+            label = next((group.strip() for group in match.groups() if group), "")
+            label = re.sub(r"^#+\s*", "", label).strip()
+            if not label or label in options:
+                continue
+            options.append(label)
+            if len(options) >= 6:
+                return options
+    if options:
+        return options
+    for doc in docs or []:
+        name = (doc.get("filename") or "").strip()
+        if name and name not in options:
+            options.append(name)
+        if len(options) >= 4:
+            break
+    return options
+
+
+def _force_scope_select_grade(grade: EvidenceGrade, options: List[str]) -> EvidenceGrade:
+    prompt = grade.hitl_prompt or (
+        "我在知识库中找到了多个相关优化方向。你想先深入了解哪一块？"
+    )
+    reason = (grade.reason or "").strip()
+    suffix = "forced_scope_select_open_question"
+    return grade.model_copy(
+        update={
+            "ambiguity": "multiple_candidates",
+            "route": "scope_select",
+            "answerability": (
+                "partial" if grade.answerability == "sufficient" else grade.answerability
+            ),
+            "hitl_prompt": prompt,
+            "hitl_options": options or list(grade.hitl_options or []),
+            "reason": f"{reason};{suffix}" if reason else suffix,
+        }
+    )
+
+
 def _grade_for_no_docs() -> EvidenceGrade:
     return EvidenceGrade(
         relevance="none",
@@ -494,8 +583,49 @@ def grade_documents_node(state: RAGState) -> RAGState:
                 grade = _fallback_grade_for_docs()
 
     route = _normalize_grade_route(grade, state)
-    grade_update = _grade_update(grade, route)
     rag_trace = state.get("rag_trace", {}) or {}
+    hitl_resumed = bool(rag_trace.get("hitl_resumed"))
+
+    # 开放式多方向问题：即使评分器直接给 answer，也优先走 HITL 选范围。
+    # HITL 恢复后禁止再次强制选范围，否则会选完又弹窗、无法作答。
+    if (
+        route == "answer"
+        and not state.get("is_sub_agent")
+        and not hitl_resumed
+        and _should_offer_scope_select(
+            state.get("question") or "",
+            docs=docs,
+            options=list(grade.hitl_options or []),
+        )
+    ):
+        options = list(grade.hitl_options or []) or _scope_options_from_docs(docs)
+        if len(options) < 2:
+            options = [
+                "核心原则与优化流程",
+                "内容写法与量化成果",
+                "ATS适配与淘汰避坑",
+            ]
+        grade = _force_scope_select_grade(grade, options[:6])
+        route = "scope_select"
+
+    # 用户已补充过一次：若仍被判成 scope_select 但已有相关证据，直接作答，避免死循环。
+    if (
+        hitl_resumed
+        and route == "scope_select"
+        and docs
+        and grade.relevance in ("weak", "strong")
+        and grade.answerability in ("partial", "sufficient")
+    ):
+        route = "answer"
+        grade = grade.model_copy(
+            update={
+                "route": "answer",
+                "ambiguity": "none",
+                "reason": f"{(grade.reason or '').strip()};skip_repeated_scope_select_after_hitl".strip(";"),
+            }
+        )
+
+    grade_update = _grade_update(grade, route)
     rag_trace.update(grade_update)
 
     if route == "answer":
@@ -787,6 +917,52 @@ def _fanout_sub_questions(state: RAGState):
     ]
 
 
+def offer_scope_select_node(state: RAGState) -> RAGState:
+    """复杂开放题拆解后，先让用户选择方向，避免直接综合作超长答案。"""
+    question = state.get("question") or ""
+    options = [sq.strip() for sq in (state.get("sub_questions") or []) if sq and sq.strip()]
+    prompt = "这个问题可以从多个方向回答。你想先了解哪一块？"
+    _emit(state, "❓", "问题涉及多个方向，等待用户选择", f"{len(options)} 个候选项")
+    rag_trace = {
+        **(state.get("rag_trace") or {}),
+        "tool_used": True,
+        "tool_name": "search_knowledge_base",
+        "query": question,
+        "expanded_query": question,
+        "retrieved_chunks": [],
+        "hitl_candidate_chunks": [],
+        "retrieval_stage": "scope_gate",
+        "retrieval_status": "needs_scope_selection",
+        "grade_route": "scope_select",
+        "evidence_relevance": "strong",
+        "evidence_answerability": "partial",
+        "evidence_ambiguity": "multiple_candidates",
+        "hitl_prompt": prompt,
+        "hitl_options": options,
+        "complexity": state.get("complexity") or "complex",
+        "complexity_reason": state.get("complexity_reason") or "",
+        "sub_questions": options,
+        "rewrite_needed": False,
+    }
+    return {
+        "route": "scope_select",
+        "retrieval_status": "needs_scope_selection",
+        "docs": [],
+        "context": "",
+        "hitl_prompt": prompt,
+        "hitl_options": options,
+        "rag_trace": rag_trace,
+    }
+
+
+def _route_after_decompose(state: RAGState):
+    """开放式复杂问题先 HITL 选范围；综合对比类问题再并行检索。"""
+    subs = [sq for sq in (state.get("sub_questions") or []) if sq]
+    if _should_offer_scope_select(state.get("question") or "", sub_questions=subs):
+        return [Send("offer_scope_select", state)]
+    return _fanout_sub_questions(state)
+
+
 def synthesis(state: RAGState) -> RAGState:
     """合并所有子 Agent 检索到的文档，去重排序后输出最终上下文。"""
     sub_results = state.get("sub_results", [])
@@ -804,12 +980,6 @@ def synthesis(state: RAGState) -> RAGState:
     for idx, item in enumerate(deduped, 1):
         item["rrf_rank"] = idx
 
-    context = _format_docs(deduped)
-    if deduped:
-        _emit(state, "✅", f"合成完成，共 {len(deduped)} 个去重片段")
-    else:
-        _emit(state, "⛔", "所有子问题都没有可用证据")
-
     # 合并所有子 Agent 的 rag_trace
     sub_traces = []
     for result in sub_results:
@@ -818,7 +988,28 @@ def synthesis(state: RAGState) -> RAGState:
             sub_traces.append(trace)
 
     original_trace = state.get("rag_trace") or {}
-    has_docs = bool(deduped)
+    successful_subs = [
+        result for result in sub_results
+        if result.get("retrieval_status") in ("answerable", "partial") and result.get("docs")
+    ]
+    force_scope = (
+        bool(deduped)
+        and len(successful_subs) >= 2
+        and _should_offer_scope_select(
+            state.get("question") or "",
+            sub_questions=state.get("sub_questions") or [],
+        )
+    )
+
+    context = _format_docs(deduped)
+    if force_scope:
+        _emit(state, "❓", "多方向证据已召回，转为范围选择", f"{len(successful_subs)} 个方向")
+    elif deduped:
+        _emit(state, "✅", f"合成完成，共 {len(deduped)} 个去重片段")
+    else:
+        _emit(state, "⛔", "所有子问题都没有可用证据")
+
+    has_docs = bool(deduped) and not force_scope
     retrieval_status = "answerable" if has_docs else "no_knowledge"
     if has_docs and any(result.get("retrieval_status") == "partial" for result in sub_results):
         retrieval_status = "partial"
@@ -829,7 +1020,22 @@ def synthesis(state: RAGState) -> RAGState:
     hitl_route = None
     hitl_prompt = ""
     hitl_options: List[str] = []
-    if not has_docs and hitl_traces:
+
+    if force_scope:
+        deduped = []
+        context = ""
+        retrieval_status = "needs_scope_selection"
+        hitl_route = "scope_select"
+        hitl_prompt = "这个问题可以从多个方向回答。你想先了解哪一块？"
+        hitl_options = [
+            (result.get("question") or "").strip()
+            for result in successful_subs
+            if (result.get("question") or "").strip()
+        ]
+        if not hitl_options:
+            hitl_options = [sq for sq in (state.get("sub_questions") or []) if sq]
+
+    if not has_docs and hitl_traces and not force_scope:
         scope_trace = next(
             (trace for trace in hitl_traces if trace.get("retrieval_status") == "needs_scope_selection"),
             None,
@@ -849,7 +1055,10 @@ def synthesis(state: RAGState) -> RAGState:
                     hitl_options.append(option)
 
     hitl_candidate_chunks: List[dict] = []
-    if not has_docs and hitl_traces:
+    if not has_docs and (hitl_traces or force_scope):
+        if force_scope:
+            for result in successful_subs:
+                hitl_candidate_chunks.extend(result.get("docs") or [])
         for trace in hitl_traces:
             hitl_candidate_chunks.extend(trace.get("hitl_candidate_chunks") or [])
 
@@ -868,8 +1077,9 @@ def synthesis(state: RAGState) -> RAGState:
         "synthesis_merged_count": len(all_docs),
         "sub_traces": sub_traces,
         "retrieval_status": retrieval_status,
-        "evidence_relevance": "strong" if has_docs else "none",
-        "evidence_answerability": "partial" if retrieval_status == "partial" else ("sufficient" if has_docs else "none"),
+        "evidence_relevance": "strong" if (has_docs or force_scope) else "none",
+        "evidence_answerability": "partial" if retrieval_status == "partial" or force_scope else ("sufficient" if has_docs else "none"),
+        "evidence_ambiguity": "multiple_candidates" if force_scope else "none",
         "evidence_confidence": None,
         "grade_route": "answer" if has_docs else (hitl_route or "no_knowledge"),
         "rewrite_needed": False,
@@ -946,6 +1156,7 @@ def build_rag_graph():
     # 节点注册
     graph.add_node("classify_complexity", classify_complexity)
     graph.add_node("decompose_question", decompose_question)
+    graph.add_node("offer_scope_select", offer_scope_select_node)
     graph.add_node("retrieve_initial", retrieve_initial)
     graph.add_node("grade_documents", grade_documents_node)
     graph.add_node("rewrite_question", rewrite_question_node)
@@ -966,8 +1177,9 @@ def build_rag_graph():
         },
     )
 
-    # 分解节点 → 通过 Send API 并行分发到 rag_sub_agent
-    graph.add_conditional_edges("decompose_question", _fanout_sub_questions)
+    # 分解后：开放式问题先 HITL 选范围，否则并行 fan-out
+    graph.add_conditional_edges("decompose_question", _route_after_decompose)
+    graph.add_edge("offer_scope_select", END)
 
     # 原有简单路径
     graph.add_edge("retrieve_initial", "grade_documents")

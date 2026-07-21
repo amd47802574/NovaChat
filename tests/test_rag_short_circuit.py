@@ -3,11 +3,11 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from backend.chat.request_context import ChatRequestContext
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+_PIPELINE_MODULE = None
 
 
 class FakeStructuredInvoker:
@@ -41,37 +41,77 @@ def _dedupe_documents(docs):
     return out
 
 
+def _bootstrap_pipeline_module():
+    """Load pipeline.py once with stubbed rag.utils (avoid heavy embedding deps)."""
+    # Preload langchain stack before sys.modules patching.
+    import langchain_core.runnables.base  # noqa: F401
+    from langchain.chat_models import init_chat_model  # noqa: F401
+
+    fake_rag = types.ModuleType("backend.rag")
+    fake_rag.__path__ = []
+    fake_utils = types.ModuleType("backend.rag.utils")
+    fake_utils.RETRIEVAL_TOP_K = 5
+    fake_utils.retrieve_documents = lambda query, top_k=5: {"docs": [], "meta": {}}
+    fake_utils.step_back_expand = lambda query: {
+        "step_back_question": "",
+        "step_back_answer": "",
+        "expanded_query": f"rewritten {query}",
+    }
+    fake_utils.generate_hypothetical_document = lambda query: f"hyde {query}"
+    fake_utils.dedupe_documents = _dedupe_documents
+    fake_utils.retrieval_trace_fields = lambda meta: dict(meta)
+    fake_utils.merge_retrieval_trace = lambda acc, meta: {**acc, **meta}
+
+    module_name = "rag_pipeline_under_test_shared"
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        REPO_ROOT / "backend" / "rag" / "pipeline.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    # Keep stubs only while importing pipeline; do not wipe langchain modules.
+    previous = {
+        key: sys.modules.get(key)
+        for key in ("backend.rag", "backend.rag.utils")
+    }
+    sys.modules["backend.rag"] = fake_rag
+    sys.modules["backend.rag.utils"] = fake_utils
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = value
+    return module
+
+
 def load_pipeline(
     *,
     retrieve_documents,
     step_back_expand=None,
     generate_hypothetical_document=None,
 ):
-    fake_rag = types.ModuleType("backend.rag")
-    fake_rag.__path__ = []
+    global _PIPELINE_MODULE
+    if _PIPELINE_MODULE is None:
+        _PIPELINE_MODULE = _bootstrap_pipeline_module()
 
-    fake_utils = types.ModuleType("backend.rag.utils")
-    fake_utils.retrieve_documents = retrieve_documents
-    fake_utils.step_back_expand = step_back_expand or (lambda query: {
+    module = _PIPELINE_MODULE
+    module.retrieve_documents = retrieve_documents
+    module.step_back_expand = step_back_expand or (lambda query: {
         "step_back_question": "",
         "step_back_answer": "",
         "expanded_query": f"rewritten {query}",
     })
-    fake_utils.generate_hypothetical_document = generate_hypothetical_document or (lambda query: f"hyde {query}")
-    fake_utils.dedupe_documents = _dedupe_documents
-    fake_utils.retrieval_trace_fields = lambda meta: dict(meta)
-    fake_utils.merge_retrieval_trace = lambda acc, meta: {**acc, **meta}
-
-    module_name = f"rag_pipeline_under_test_{id(retrieve_documents)}"
-    spec = importlib.util.spec_from_file_location(
-        module_name,
-        REPO_ROOT / "backend" / "rag" / "pipeline.py",
+    module.generate_hypothetical_document = (
+        generate_hypothetical_document or (lambda query: f"hyde {query}")
     )
-    module = importlib.util.module_from_spec(spec)
-
-    with patch.dict(sys.modules, {"backend.rag": fake_rag, "backend.rag.utils": fake_utils}):
-        spec.loader.exec_module(module)
-
+    module.dedupe_documents = _dedupe_documents
+    module.retrieval_trace_fields = lambda meta: dict(meta)
+    module.merge_retrieval_trace = lambda acc, meta: {**acc, **meta}
+    module._rag_sub_agent_graph = module.build_rag_sub_agent_graph()
+    module.rag_graph = module.build_rag_graph()
     return module
 
 
@@ -332,6 +372,53 @@ class RagShortCircuitTests(unittest.TestCase):
         self.assertEqual("targeted_retrieval", result.get("rag_trace", {}).get("hitl_resume_strategy"))
         self.assertEqual("hitl_targeted_retrieval", result.get("rag_trace", {}).get("retrieval_stage"))
 
+    def test_resume_after_scope_select_does_not_force_scope_again(self):
+        """用户选完范围后，即使原问题仍含“怎么”，也不应再次强制 HITL。"""
+        docs = [
+            _doc("## 八、简历迭代优化五步法\n第一步 JD 拆解", "c1"),
+            _doc("## 六、ATS简历适配规范\n优先 PDF", "c2"),
+            _doc("## 七、高频扣分黑名单\n无量化直接淘汰", "c3"),
+        ]
+
+        def retrieve(query, top_k=5):
+            return {"docs": docs, "meta": _meta(3)}
+
+        def grade(schema, prompt):
+            return {
+                "relevance": "strong",
+                "answerability": "sufficient",
+                "ambiguity": "none",
+                "route": "answer",
+                "confidence": 0.92,
+            }
+
+        pipeline = load_pipeline(retrieve_documents=retrieve)
+        pipeline._get_grader_model = lambda: FakeStructuredModel(grade)
+        resume_state = {
+            "version": 1,
+            "question": "简历怎么优化才更容易过关",
+            "route": "scope_select",
+            "retrieval_status": "needs_scope_selection",
+            "candidate_docs": docs,
+            "rag_trace": {
+                "tool_used": True,
+                "tool_name": "search_knowledge_base",
+                "query": "简历怎么优化才更容易过关",
+                "hitl_options": ["第一步：JD深度拆解", "ATS适配规范"],
+            },
+        }
+
+        ctx = self._ctx()
+        try:
+            result = pipeline.resume_rag_from_hitl(resume_state, "第一步：JD深度拆解", ctx)
+        finally:
+            ctx.close()
+
+        self.assertEqual("answerable", result.get("retrieval_status"))
+        self.assertEqual("answer", result.get("route"))
+        self.assertEqual(3, len(result.get("docs") or []))
+        self.assertNotEqual("scope_select", result.get("route"))
+
     def test_complex_sub_agents_keep_partial_docs_without_rewrite(self):
         calls = {"retrieve": [], "step_back": 0}
 
@@ -433,6 +520,125 @@ class RagShortCircuitTests(unittest.TestCase):
         self.assertEqual("needs_clarification", result.get("retrieval_status"))
         self.assertEqual("clarify", result.get("route"))
         self.assertIn("具体指什么", result.get("hitl_prompt", ""))
+
+    def test_open_ended_answer_is_forced_to_scope_select(self):
+        """开放式问题即使评分器给 answer，也应优先 HITL 选范围。"""
+        docs = [
+            _doc("## 八、简历迭代优化五步法\n第一步 JD 拆解", "c1"),
+            _doc("## 六、ATS简历适配规范\n优先 PDF", "c2"),
+            _doc("## 七、高频扣分黑名单\n无量化直接淘汰", "c3"),
+        ]
+
+        def retrieve(query, top_k=5):
+            return {"docs": docs, "meta": _meta(3)}
+
+        def grade(schema, prompt):
+            return {
+                "relevance": "strong",
+                "answerability": "sufficient",
+                "ambiguity": "none",
+                "route": "answer",
+                "confidence": 0.9,
+                "reason": "enough evidence",
+            }
+
+        pipeline = load_pipeline(retrieve_documents=retrieve)
+        pipeline._get_complexity_model = lambda: FakeStructuredModel(
+            lambda schema, prompt: {"complexity": "simple", "reason": "unit"}
+        )
+        pipeline._get_grader_model = lambda: FakeStructuredModel(grade)
+
+        ctx = self._ctx()
+        try:
+            result = pipeline.run_rag_graph("简历怎么优化才更容易过关", ctx)
+        finally:
+            ctx.close()
+
+        self.assertEqual([], result.get("docs"))
+        self.assertEqual("needs_scope_selection", result.get("retrieval_status"))
+        self.assertEqual("scope_select", result.get("route"))
+        self.assertGreaterEqual(len(result.get("hitl_options") or []), 2)
+        self.assertIsInstance(result.get("hitl_resume_state"), dict)
+
+    def test_complex_open_ended_offers_scope_before_fanout(self):
+        """复杂开放题拆解后应先 HITL，而不是并行检索后直接综合长答。"""
+        calls = {"retrieve": 0}
+
+        def retrieve(query, top_k=5):
+            calls["retrieve"] += 1
+            return {"docs": [_doc("should not retrieve yet", query)], "meta": _meta(1)}
+
+        def complexity(schema, prompt):
+            if schema.__name__ == "ComplexityResult":
+                return {"complexity": "complex", "reason": "multi aspect"}
+            return {
+                "sub_questions": [
+                    "ATS 适配规范有哪些？",
+                    "简历优化五步法是什么？",
+                    "高频淘汰点黑名单有哪些？",
+                ]
+            }
+
+        pipeline = load_pipeline(retrieve_documents=retrieve)
+        pipeline._get_complexity_model = lambda: FakeStructuredModel(complexity)
+        pipeline._get_grader_model = lambda: FakeStructuredModel(
+            lambda schema, prompt: {
+                "relevance": "strong",
+                "answerability": "sufficient",
+                "ambiguity": "none",
+                "route": "answer",
+                "confidence": 0.9,
+            }
+        )
+
+        ctx = self._ctx()
+        try:
+            result = pipeline.run_rag_graph("简历怎么优化才更容易过关", ctx)
+        finally:
+            ctx.close()
+
+        self.assertEqual(0, calls["retrieve"])
+        self.assertEqual("needs_scope_selection", result.get("retrieval_status"))
+        self.assertEqual("scope_select", result.get("route"))
+        self.assertEqual(3, len(result.get("hitl_options") or []))
+        self.assertIn("ATS", "".join(result.get("hitl_options") or []))
+
+    def test_complex_comparison_still_fans_out(self):
+        """对比类复杂问题仍应并行检索并合成，而不是 scope_select。"""
+        calls = {"retrieve": []}
+
+        def retrieve(query, top_k=5):
+            calls["retrieve"].append(query)
+            return {"docs": [_doc(f"evidence for {query}", query)], "meta": _meta(1)}
+
+        def complexity(schema, prompt):
+            if schema.__name__ == "ComplexityResult":
+                return {"complexity": "complex", "reason": "compare"}
+            return {"sub_questions": ["应届生模块顺序", "管理层模块顺序"]}
+
+        def grade(schema, prompt):
+            return {
+                "relevance": "strong",
+                "answerability": "sufficient",
+                "ambiguity": "none",
+                "route": "answer",
+                "confidence": 0.8,
+            }
+
+        pipeline = load_pipeline(retrieve_documents=retrieve)
+        pipeline._get_complexity_model = lambda: FakeStructuredModel(complexity)
+        pipeline._get_grader_model = lambda: FakeStructuredModel(grade)
+
+        ctx = self._ctx()
+        try:
+            result = pipeline.run_rag_graph("对比应届生和管理层简历结构的区别", ctx)
+        finally:
+            ctx.close()
+
+        self.assertCountEqual(["应届生模块顺序", "管理层模块顺序"], calls["retrieve"])
+        self.assertEqual(2, len(result.get("docs", [])))
+        self.assertEqual("answerable", result.get("retrieval_status"))
+        self.assertNotEqual("scope_select", result.get("route"))
 
 
 if __name__ == "__main__":

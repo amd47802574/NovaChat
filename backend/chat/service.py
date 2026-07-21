@@ -488,6 +488,7 @@ async def chat_with_agent_stream(
                     next_pending_hitl["prompt"],
                     next_pending_hitl["options"],
                 )
+                yield f"data: {json.dumps({'type': 'content', 'content': full_response})}\n\n"
             elif not (rag_result.get("docs") if isinstance(rag_result, dict) else None):
                 full_response = _no_knowledge_response()
                 yield f"data: {json.dumps({'type': 'content', 'content': full_response})}\n\n"
@@ -502,6 +503,9 @@ async def chat_with_agent_stream(
                     if content:
                         full_response += content
                         yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
+                if not full_response.strip():
+                    full_response = "我已根据你的补充完成检索，但暂时没能生成完整回答。请再试一次，或换个更具体的问法。"
+                    yield f"data: {json.dumps({'type': 'content', 'content': full_response})}\n\n"
 
             save_meta = dict(metadata)
             if next_pending_hitl:
