@@ -27,7 +27,7 @@ SYSTEM_PROMPT = (
     "工具使用规则："
     "- 每轮对话中，同一个工具最多调用一次，禁止重复调用"
     "- 一旦调用了 search_knowledge_base 并获得结果，必须立即基于该结果生成最终答案"
-    "- 获得 search_knowledge_base 结果后，禁止再次调用任何工具（包括 get_current_weather 或 search_knowledge_base）"
+    "- 获得 search_knowledge_base 结果后，禁止再次调用任何工具（包括但不仅限于 get_current_weather 或 search_knowledge_base）"
     "知识库检索结果的处理规则："
     "- 如果工具返回以 NEEDS_CLARIFICATION 开头，说明需要澄清问题，请直接向用户提问，不要基于检索到的上下文回答"
     "- 如果工具返回以 NEEDS_SCOPE_SELECTION 开头，说明需要用户选择范围，请直接向用户提问，不要基于检索到的上下文回答"
@@ -59,6 +59,30 @@ fast_model = init_chat_model(
 
 
 def create_agent_for_request(ctx: ChatRequestContext):
+    # 动态生成包含模型信息的系统提示词
+    model_info_prompt = f"""
+
+【产品身份】
+你是星智问答（NovaChat）智能助手。
+
+【底层模型信息】
+底层对话模型：{MODEL}
+"""
+    # 如果配置了不同的快速模型，也注入进去
+    if FAST_MODEL and FAST_MODEL != MODEL:
+        model_info_prompt += f"辅助/快速模型：{FAST_MODEL}\n"
+
+    model_info_prompt += """
+【回答身份相关问题时的规则】
+当用户询问「你用什么大模型」时：
+- 先说明产品身份（NovaChat）
+- 再准确报出底层对话模型名称
+- 不要编造厂商、版本或能力
+- 如实回答，不要隐瞒或模糊处理
+"""
+    # 合并原有系统提示词和模型信息
+    full_system_prompt = SYSTEM_PROMPT + model_info_prompt
+
     return create_agent(
         model=model,
         tools=[
@@ -71,5 +95,6 @@ def create_agent_for_request(ctx: ChatRequestContext):
             web_search,
             analyze_text,
         ],
-        system_prompt=SYSTEM_PROMPT,
+        # system_prompt=SYSTEM_PROMPT,
+        system_prompt=full_system_prompt,
     )
