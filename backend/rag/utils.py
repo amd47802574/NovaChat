@@ -125,10 +125,15 @@ def merge_retrieval_trace(accumulated: Dict[str, Any], meta: Dict[str, Any]) -> 
 
 
 def _get_rerank_endpoint() -> str:
+    """拼接精排端点；兼容 host 已含 /v1 或已含完整 /v1/rerank 的写法。"""
     if not RERANK_BINDING_HOST:
         return ""
     host = RERANK_BINDING_HOST.strip().rstrip("/")
-    return host if host.endswith("/v1/rerank") else f"{host}/v1/rerank"
+    if host.endswith("/rerank"):
+        return host
+    if host.endswith("/v1"):
+        return f"{host}/rerank"
+    return f"{host}/v1/rerank"
 
 
 def _effective_score(doc: dict) -> Optional[float]:
@@ -143,10 +148,17 @@ def _effective_score(doc: dict) -> Optional[float]:
 
 
 def _meets_rerank_min_score(doc: dict) -> bool:
-    score = _effective_score(doc)
-    if score is None:
-        return RERANK_MIN_SCORE <= 0
-    return score >= RERANK_MIN_SCORE
+    """准入门槛只作用于精排分。
+
+    召回分（RRF 融合分）量级与精排分完全不同（约 0.016 vs 0~1），
+    用同一阈值卡召回分会在精排降级时误杀全部结果，因此无精排分时直接放行。
+    """
+    if RERANK_MIN_SCORE <= 0:
+        return True
+    rerank_score = doc.get("rerank_score")
+    if rerank_score is None:
+        return True
+    return float(rerank_score) >= RERANK_MIN_SCORE
 
 
 def _merge_rank_score_into(target: dict, source: dict) -> None:
@@ -284,7 +296,6 @@ def _rerank_documents(query: str, docs: List[dict], top_k: int) -> Tuple[List[di
         "Authorization": f"Bearer {RERANK_API_KEY}",
     }
     try:
-        meta["rerank_applied"] = True
         response = requests.post(
             meta["rerank_endpoint"],
             headers=headers,
@@ -307,6 +318,8 @@ def _rerank_documents(query: str, docs: List[dict], top_k: int) -> Tuple[List[di
                 reranked.append(doc)
 
         if reranked:
+            # 只有真正拿到精排分并完成重排，才算精排生效
+            meta["rerank_applied"] = True
             return reranked[:top_k], meta
 
         meta["rerank_error"] = "empty_rerank_results"
