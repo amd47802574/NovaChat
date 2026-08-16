@@ -581,6 +581,11 @@ StreamingResponse(
 
 ## 更新日志
 
+### 2026-08-16 新增站点备案信息与 GitHub 仓库入口
+
+- **ICP 备案链接**：在登录页底部与聊天页输入区 footer 新增备案号链接（赣ICP备2026017220号），指向工信部备案查询站点 `https://beian.miit.gov.cn/`。
+- **GitHub 仓库入口**：聊天页 header 新增 GitHub 图标按钮，登录页 intro 区新增 GitHub 仓库胶囊链接，均指向 `https://github.com/amd47802574/NovaChat`。
+
 ### 2026-06-12 全面迁移至 Milvus 2.5+ 原生 BM25 与事务级可靠删除
 
 - **服务端原生 BM25**：重构并迁移至 Milvus 2.5+ 内置中文分词器与 BM25 Pipeline 函数。完全移除客户端的手写分词、稀疏特征向量计算及 `bm25_state.json` 状态文件，极大降低客户端负担。
