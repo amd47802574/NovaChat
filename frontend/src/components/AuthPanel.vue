@@ -76,6 +76,9 @@
           {{ authStore.authMode === 'login' ? '还没有账号？立即注册' : '已有账号？返回登录' }}
         </button>
       </div>
+      <div class="auth-footer">
+        <a class="icp-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">赣ICP备2026017220号</a>
+      </div>
     </div>
   </section>
 </template>

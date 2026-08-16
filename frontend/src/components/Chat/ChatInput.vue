@@ -90,7 +90,10 @@
         {{ prompt }}
       </button>
     </div>
-    <div class="footer-text"><i class="fas fa-shield-halved"></i> NovaChat 可能产生不准确的信息，请核验重要内容。</div>
+    <div class="footer-text">
+      <span class="footer-disclaimer"><i class="fas fa-shield-halved"></i> NovaChat 可能产生不准确的信息，请核验重要内容。</span>
+      <a class="icp-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">赣ICP备2026017220号</a>
+    </div>
   </div>
 </template>
 
