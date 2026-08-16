@@ -8,9 +8,20 @@
         <span>NovaChat</span>
         <small>{{ currentTitle }}</small>
       </div>
-      <button class="new-chat-btn" type="button" title="新建对话" @click="createNewChat">
-        <i class="fas fa-plus"></i>
-      </button>
+      <div class="header-actions">
+        <a
+          class="top-icon-btn github-link"
+          href="https://github.com/amd47802574/NovaChat"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="GitHub 仓库"
+        >
+          <i class="fab fa-github"></i>
+        </a>
+        <button class="new-chat-btn" type="button" title="新建对话" @click="createNewChat">
+          <i class="fas fa-plus"></i>
+        </button>
+      </div>
     </header>
 
     <div class="chat-container" ref="chatContainerRef">

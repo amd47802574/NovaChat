@@ -2076,6 +2076,33 @@ select:focus-visible {
     color: #3cb9ff;
 }
 
+.auth-github-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 28px;
+    padding: 9px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #d6e6f7;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.18s ease;
+}
+
+.auth-github-link i {
+    font-size: 1.05rem;
+    color: #ffffff;
+}
+
+.auth-github-link:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.32);
+    transform: translateY(-1px);
+}
+
 .auth-panel {
     width: min(440px, calc(100% - 64px));
     margin: auto;
@@ -2814,6 +2841,17 @@ button {
 .new-chat-btn:active {
     box-shadow: 0 3px 10px color-mix(in srgb, var(--nova-primary) 24%, transparent);
     transform: scale(0.94);
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-self: end;
+}
+
+.github-link {
+    text-decoration: none;
 }
 
 .chat-container {
