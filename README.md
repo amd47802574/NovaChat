@@ -152,7 +152,7 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 
 2）如果只运行`npm run dev`：
 
-- 需访问前端页面：`http://127.0.0.1:3000/` 
+- 需访问前端页面：`http://127.0.0.1:3000/`
 
 ## 项目概览
 
@@ -276,6 +276,10 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
     - [milvus_client.py](backend/indexing/milvus_client.py)、[milvus_writer.py](backend/indexing/milvus_writer.py)。
     - [parent_chunk_store.py](backend/indexing/parent_chunk_store.py)：父级分块 DocStore。
   - `tools/`：LangChain Agent 可调用的 `@tool`（天气、知识库检索）。
+    - `mcp/`：[MCP 协议](https://modelcontextprotocol.io)客户端 + 服务端双向适配。
+      - [adapters.py](backend/tools/mcp/adapters.py)：把现有 `@tool` 函数转为符合 MCP 协议的 `(name, callable, input_schema)` 三元组。
+      - [server.py](backend/tools/mcp/server.py)：用 `MCPServer` / `FastMCP` 把 7 个纯函数工具暴露为 stdio MCP Server,可被 Claude Desktop 等客户端调用。
+      - [client.py](backend/tools/mcp/client.py)：读取 `mcp_config.json`,通过 stdio 连接外部 MCP Server 并把工具注入 Agent。
   - `infra/`：[database.py](backend/infra/database.py)、[cache.py](backend/infra/cache.py)、[auth.py](backend/infra/auth.py)。
   - `db/`：[models.py](backend/db/models.py)：ORM 模型。
   - `schemas/`：Pydantic 请求/响应（auth / chat / documents）。
@@ -394,6 +398,54 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 - 检索候选池：`RETRIEVAL_CANDIDATE_K`（固定候选数，优先）、`RETRIEVAL_CANDIDATE_MULTIPLIER`（未设 K 时 `max(top_k × 倍数, top_k)`，默认 `3`）
 - Auto-merging：`AUTO_MERGE_ENABLED`、`AUTO_MERGE_THRESHOLD`、`LEAF_RETRIEVE_LEVEL`
 - 工具：`AMAP_WEATHER_API`、`AMAP_API_KEY`
+- MCP：`NOVACHAT_MCP_ENABLED`（默认 `1` 开启;设为 `0` 关闭外部 MCP Server 工具加载）
+
+## MCP 工具协议支持
+
+NovaChat 在 `backend/tools/mcp/` 下提供 **MCP(Model Context Protocol)** 双向支持:
+
+### 服务端:把本地工具暴露为 MCP Server
+
+7 个纯函数工具(`get_current_weather` / `list_documents` / `get_current_time` / `calculate` / `analyze_conversation_history` / `web_search` / `analyze_text`)会被注册到一个 stdio MCP Server,可供 Claude Desktop、Cursor 或任意 MCP 客户端调用。
+
+```bash
+# 启动本地 MCP Server (stdio)
+python -m backend.tools.mcp.server
+```
+
+> `search_knowledge_base` 依赖每请求的 `ChatRequestContext`,不在此处暴露(子进程无法访问主进程上下文)。
+
+### 客户端:接入外部 MCP Server
+
+复制 [mcp_config.example.json](mcp_config.example.json) 为 `mcp_config.json`,声明要接入的外部 MCP Server:
+
+```bash
+cp mcp_config.example.json mcp_config.json
+# 编辑 mcp_config.json,填入 npx 命令、参数、env 等
+```
+
+配置格式兼容 Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/allowed/path"]
+    }
+  }
+}
+```
+
+启动后端时,`backend/chat/runtime.py` 会自动通过 stdio 拉起所有配置的外部 Server,并把它们的工具与本地工具一起注入 Agent。失败的 Server 会被跳过并记录警告,不影响主流程。
+
+### 验证测试
+
+```bash
+.venv\Scripts\python.exe tests\test_mcp.py
+```
+
+测试覆盖:工具适配、配置解析、Server 注册、环境变量开关 4 个用例。
 
 ## API 速览
 

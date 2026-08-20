@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "novachat-local": {
+      "_comment": "示例:把 NovaChat 自身的本地工具通过 MCP Server 暴露回来,用于验证双向链路。如不需要可删除。",
+      "command": "python",
+      "args": ["-m", "backend.tools.mcp.server"]
+    },
+
+    "filesystem": {
+      "_comment": "示例:Anthropic 官方文件系统 MCP Server(需要 npx)。把 /path/to/allowed/dir 改为允许访问的目录。",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+    },
+
+    "github": {
+      "_comment": "示例:GitHub MCP Server,需要设置 GITHUB_PERSONAL_ACCESS_TOKEN 环境变量。",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here"
+      }
+    }
+  }
+}

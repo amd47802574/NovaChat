@@ -10,6 +10,9 @@ wheels/
 .venv
 .env    
 
+# MCP 客户端配置(可能包含敏感 token,实际配置不入库,只跟踪 .example 模板)
+mcp_config.json
+
 #docker files
 volumes/
 

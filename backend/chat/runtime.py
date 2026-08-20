@@ -14,6 +14,7 @@ from backend.tools import (
     web_search,
     analyze_text,
 )
+from backend.tools.mcp import load_external_mcp_tools_sync
 
 API_KEY = os.getenv("ARK_API_KEY")
 MODEL = os.getenv("MODEL")
@@ -83,18 +84,28 @@ def create_agent_for_request(ctx: ChatRequestContext):
     # 合并原有系统提示词和模型信息
     full_system_prompt = SYSTEM_PROMPT + model_info_prompt
 
+    # 加载本地工具(包含请求上下文相关的 search_knowledge_base)
+    local_tools = [
+        get_current_weather,
+        make_search_knowledge_base(ctx),
+        list_documents,
+        get_current_time,
+        calculate,
+        analyze_conversation_history,
+        web_search,
+        analyze_text,
+    ]
+
+    # 加载外部 MCP Server 提供的工具(失败返回空列表,不影响主流程)
+    # 注意:MCP 工具加载是同步阻塞调用,内部会通过子进程拉起配置的外部 Server。
+    # 如需关闭此行为,设置环境变量 NOVACHAT_MCP_ENABLED=0。
+    external_mcp_tools = load_external_mcp_tools_sync()
+
+    all_tools = local_tools + external_mcp_tools
+
     return create_agent(
         model=model,
-        tools=[
-            get_current_weather,
-            make_search_knowledge_base(ctx),
-            list_documents,
-            get_current_time,
-            calculate,
-            analyze_conversation_history,
-            web_search,
-            analyze_text,
-        ],
+        tools=all_tools,
         # system_prompt=SYSTEM_PROMPT,
         system_prompt=full_system_prompt,
     )
