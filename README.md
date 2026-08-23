@@ -2,34 +2,7 @@
 
 NovaChat（星智问答）是一个基于 RAG 的智能知识问答平台，支持混合检索、结果重排、来源引用、多轮会话与知识库管理。
 
-## 本地部署
-
-需在本地安装Milvus、Redis、Postgres
-
-### 1) 环境准备
-
-- Python `3.12+`
-- 包管理建议：`uv`（也支持 `pip`）
-- 本地已安装并启动 Milvus、Redis、Postgres 服务
-
-### 2) 使用 pyproject 安装依赖
-
-在项目根目录执行：
-
-```bash
-# 方式 A：推荐（uv）
-uv sync
-```
-
-```bash
-# 方式 B：pip
-python -m venv .venv
-source .venv/bin/activate  # Windows用户请参考"运行"章节的说明
-pip install -U pip
-pip install -e .
-```
-
-## Docker部署（不包含前后端）
+## Docker部署（不包含前后端，需额外启动）
 
 封装了Milvus、Redis、Postgres，不包含前后端原因：方便随时更改模型及密钥
 
@@ -172,13 +145,14 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 - **双向降级**：稀疏生成或 Hybrid 调用失败时自动降级为纯稠密检索，提升稳定性。
 - **流式输出（Streaming）**：后端基于 `agent.astream(stream_mode="messages")` 逐 token 推送，前端 SSE + ReadableStream 实现打字机效果。
 - **实时 RAG 过程可视化**：检索过程在模型"思考中"阶段就开始展示，通过 `asyncio.Queue` + 后台任务架构实现工具执行期间的实时推送。
+- **工具调用过程可视化**：捕获 Agent 的 `tool_call_chunks`，发射 `tool_call` 事件，思考阶段实时展示"🔧 调用工具：xxx"，回答完成后以可折叠"工具调用（N）"持久展示，与"检索过程"并列。
 - **回答终止功能**：前端 `AbortController` + 后端 `StreamingResponse` 支持用户随时中断正在生成的回答。
 - **会话摘要记忆**：自动摘要旧消息并注入系统提示，维持上下文且控制 token。
 - **文档处理链路**：上传 → 切分 → 稠密/稀疏向量同步生成 → Milvus 入库，支持重复上传自动清理旧 chunk。
 - **Milvus 2.5+ 原生 BM25 混合检索**：彻底摒弃本地客户端手写 BM25 序列化和统计同步的繁琐设计。通过在 Milvus 集合 schema 中为 `text` 字段绑定 `FunctionType.BM25` 计算函数，由向量数据库在服务端原生提取稀疏特征，保证高效率的 Dense + Sparse 混合检索与完美的统计对齐。
 - **三级分块 + Auto-merging**：L1/L2/L3 三层滑窗切分；检索时优先召回 L3，满足阈值后自动合并到父块（L3->L2->L1）。
 - **Leaf-only 向量化存储**：仅叶子分块写入 Milvus，父块写入 DocStore，减少向量冗余并保留上下文聚合能力。
-- **工具可扩展**：天气查询示例 + 知识库检索，便于按需增添第三方 API 或企业数据源。
+- **工具可扩展**：天气查询示例 + 知识库检索 + 网络搜索（Firecrawl v2 / Serper / DuckDuckGo 多后端可切换），便于按需增添第三方 API 或企业数据源。
 - **RAG 过程可观测**：记录检索、评分、重写与来源信息，前端可展开查看每一步细节。
 - **查询重写体系**：Step-Back 与 HyDE 两种扩展方式 + 路由选择，必要时触发重写检索。
 - **相关性评分门控**：基于结构化输出的 `grade_documents` 判断是否需要重写检索。
@@ -202,7 +176,7 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 
 #### 生成层
 
-1. 子问题分解（CoT、专门的分解小模型、判断分几个子问题）
+1. 子问题分解（CoT、专门的分解小模型、判断分几个子问题） --done
 2. 多文档Refine（一次拼接、串行Refine）
 3. 多文档冲突处理（A文档说X，B文档说非X），回答中显式输出“来源存在冲突”
 
@@ -216,43 +190,14 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 
 1. 开发 SQL assistant Skill
 2. 实现暂停功能与人工介入机制 --done
-3. 新增问题类型判断，简单问题跳过复杂处理流程
-4. 扩展网络搜索能力
-5. 支持多步骤规划与任务并行执行
-6. 搭建路由器节点，由 LLM 自主判断下一步动作
+3. 新增问题类型判断，简单问题跳过复杂处理流程 --done
+4. 扩展网络搜索能力 --done
+5. 支持多步骤规划与任务并行执行 --done
+6. 搭建路由器节点，由 LLM 自主判断下一步动作 --done
 7. 优化 memory 管理：集成 MemO、LangMem 等方案
 8. multi-agent：工具过多，把工具拆分给职责明确的专业化agent，提升工具选择的准确性和整体稳定性
-9. 历史记录会话名称可修改
+9. 历史记录会话名称可修改 --done
 10. 死循环检测与恢复：\_is_stuck + attempt_loop_recovery
-
-### 后端服务建设（本轮已完成）
-
-1. 账号体系与权限体系
-
-- 新增注册登录接口：`/auth/register`、`/auth/login`。
-- 新增用户信息接口：`/auth/me`。
-- 引入 JWT 鉴权中间能力：请求通过 Bearer Token 识别当前用户。
-- 权限隔离：
-  - `admin`：可执行文档上传、删除、文档列表查询。
-  - `user`：仅可聊天、查询和删除自己的会话历史。
-
-2. 数据库建模与持久化迁移
-
-- 使用 SQLAlchemy 建立核心模型：`User`、`ChatSession`、`ChatMessage`、`ParentChunk`。
-- 聊天历史由本地 JSON 迁移到 PostgreSQL。
-- 父级分块文档（L1/L2）由本地 JSON 迁移到 PostgreSQL。
-
-3. Redis 缓存策略
-
-- 会话消息缓存：按 `user + session` 维度缓存消息列表。
-- 会话列表缓存：按 `user` 维度缓存会话摘要列表。
-- 父文档缓存：按 `chunk_id` 缓存父级分块内容。
-- 写入/删除后执行缓存失效，保证一致性。
-
-4. 密码安全与兼容
-
-- 新注册用户采用 PBKDF2-SHA256 存储密码哈希（避免 bcrypt 后端兼容问题）。
-- 登录校验兼容历史 bcrypt 哈希，支持平滑迁移。
 
 ## 目录与架构
 
@@ -294,11 +239,12 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
       - `stores/documents.ts`：实现知识库文档的展示并配合接口轮询监听上传异步任务进度。
     - **精细化组件设计**：
       - `ThinkingTrace.vue` & `RetrievalTraceDetails.vue`：动态渲染子/主 Agent 思考状态（Searching, Grading, Rewriting 等步骤），支持展示每路子问题的合并与召回详情。
+      - `ToolCallTrace.vue`：与"检索过程"并列展示 Agent 的"工具调用-工具名"过程，思考阶段在 `ThinkingTrace.vue` 实时呈现，回答完成后以可折叠列表持久展示。
       - `References.vue`：折叠卡片展示知识库来源信息，含 RRF Rank、Rerank 语义得分、合并叶子块数、所处层级和页码。
       - `UploadSection.vue` & `DocumentSettings.vue`：管理员控制面板，动态轮询监听并步进展示上传的多阶段状态机进度。
     - **流式解包与主动终止**：
       - `utils/api.ts`：底层采用 `fetch` API 的 `response.body.getReader()` 流式逐块（chunk）解包 SSE 数据，并配合 `AbortController` 绑定终止按钮实现前端主动切断长连接。
-  - 在 `frontend/` 目录下运行 `npm run dev` 即可开始开发联调（运行于 http://localhost:3000）。
+  - 在 `frontend/` 目录下运行 `npm run dev` 即可开始开发联调（运行于 <http://localhost:3000）。>
   - 在 `frontend/` 目录下运行 `npm run build` 会生成生产环境编译产物输出至 `frontend/dist/`，供 FastAPI 后端无缝进行静态托管。
 - 数据：`data/`
   - `documents/`：上传文档原文件。
@@ -315,10 +261,10 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 - 天气问题 → `get_current_weather`
 - 知识问答 → `search_knowledge_base`
 
-4. 若命中知识库工具，进入 `rag_pipeline.py` 执行检索工作流，各阶段通过 `ChatRequestContext` 实时推送到前端。
-5. 检索结果与 RAG Trace 一起返回，Agent 流式生成最终回答（逐 token 推送）。
-6. 前端 ReadableStream 逐块解析 SSE，打字机效果实时渲染。
-7. 同时消息持久化到 PostgreSQL，并通过 Redis 缓存加速历史会话回放。
+1. 若命中知识库工具，进入 `rag_pipeline.py` 执行检索工作流，各阶段通过 `ChatRequestContext` 实时推送到前端。
+2. 检索结果与 RAG Trace 一起返回，Agent 流式生成最终回答（逐 token 推送）。
+3. 前端 ReadableStream 逐块解析 SSE，打字机效果实时渲染。
+4. 同时消息持久化到 PostgreSQL，并通过 Redis 缓存加速历史会话回放。
 
 ### 2) RAG 全链路（重点）
 
@@ -329,23 +275,23 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 - 在完整候选上对叶子块执行 Auto-merging（L3→L2→L1），父块从 DocStore 读取。
 - 对合并后的片段走 Jina Rerank 精排并截断 `top_k`（流水线：`recall_merge_rerank`）。
 
-2. **相关性打分门控**：`grade_documents`
+1. **相关性打分门控**：`grade_documents`
 
 - 使用结构化输出打分 `yes/no`。
 - `yes` 直接进入生成回答；`no` 进入重写阶段。
 
-3. **查询重写路由**：`rewrite_question`
+1. **查询重写路由**：`rewrite_question`
 
 - 在 `step_back / hyde / complex` 中选择策略。
 - 生成 `rewrite_query`、`step_back_question`、`hypothetical_doc` 等中间结果。
 
-4. **二次召回**：`retrieve_expanded`
+1. **二次召回**：`retrieve_expanded`
 
 - 对重写后的查询（或 HyDE 文档）再次检索。
 - 同样执行 L3 召回 → Auto-merging → Rerank；多路结果按 `chunk_id` 去重（保留更高分）后返回上下文。
 
-5. **答案生成**：Agent 结合上下文生成最终回答。
-6. **可观测追踪**：返回 `rag_trace`，包括
+1. **答案生成**：Agent 结合上下文生成最终回答。
+2. **可观测追踪**：返回 `rag_trace`，包括
 
 - 评分结果与路由决策
 - 重写策略与重写内容
@@ -397,7 +343,7 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 - 密码参数：`PASSWORD_PBKDF2_ROUNDS`
 - 检索候选池：`RETRIEVAL_CANDIDATE_K`（固定候选数，优先）、`RETRIEVAL_CANDIDATE_MULTIPLIER`（未设 K 时 `max(top_k × 倍数, top_k)`，默认 `3`）
 - Auto-merging：`AUTO_MERGE_ENABLED`、`AUTO_MERGE_THRESHOLD`、`LEAF_RETRIEVE_LEVEL`
-- 工具：`AMAP_WEATHER_API`、`AMAP_API_KEY`
+- 工具：天气查询使用 [uapis.cn](https://uapis.cn) 公共接口（免费，无需配置）；网络搜索 `WEB_SEARCH_API`（默认 `firecrawl`，可选 `serper` / `duckduckgo`）、`FIRECRAWL_API_KEY`、`SERPER_API_KEY`
 - MCP：`NOVACHAT_MCP_ENABLED`（默认 `1` 开启;设为 `0` 关闭外部 MCP Server 工具加载）
 
 ## MCP 工具协议支持
@@ -477,14 +423,14 @@ FastAPI 运行在单线程的 asyncio Event Loop 上。为了不阻塞主线程�
 **解决方案**：
 我们采用了 **"Request Context + Threadsafe Callback"** 模式：
 
-1.  **请求上下文创建 (Service Layer)**:
-    `chat_with_agent_stream()` 为每个请求创建独立的 `ChatRequestContext`，其中保存本请求的 `output_queue` 与主事件循环。
-2.  **显式依赖注入 (Tool/RAG Layer)**:
-    运行时使用 `create_agent_for_request(ctx)` 为本请求创建 agent，并通过 `make_search_knowledge_base(ctx)` 创建捕获该 `ctx` 的专属工具。RAG pipeline 入口为 `run_rag_graph(question, ctx)`。
-3.  **跨线程发射 (Worker Thread)**:
-    RAG 节点调用 `ctx.emit_rag_step(...)`，内部使用本请求保存的 `loop.call_soon_threadsafe(queue.put_nowait, event)` 将事件投递回主 Loop。
-4.  **隔离保证**:
-    RAG step、RAG trace、知识库工具调用计数都存放在请求上下文对象中。
+1. **请求上下文创建 (Service Layer)**:
+   `chat_with_agent_stream()` 为每个请求创建独立的 `ChatRequestContext`，其中保存本请求的 `output_queue` 与主事件循环。
+2. **显式依赖注入 (Tool/RAG Layer)**:
+   运行时使用 `create_agent_for_request(ctx)` 为本请求创建 agent，并通过 `make_search_knowledge_base(ctx)` 创建捕获该 `ctx` 的专属工具。RAG pipeline 入口为 `run_rag_graph(question, ctx)`。
+3. **跨线程发射 (Worker Thread)**:
+   RAG 节点调用 `ctx.emit_rag_step(...)`，内部使用本请求保存的 `loop.call_soon_threadsafe(queue.put_nowait, event)` 将事件投递回主 Loop。
+4. **隔离保证**:
+   RAG step、RAG trace、知识库工具调用计数都存放在请求上下文对象中。
 
 ```python
 # 核心代码摘要
@@ -515,16 +461,16 @@ ctx.emit_rag_step("🔍", "正在检索知识库...", "初始检索")
 
 前端 `stores/chat.ts` 结合响应式组件 `ThinkingTrace.vue` 维护了一个微型状态机来处理通过 SSE 传回的复杂混合流：
 
-1.  **Idle**: 等待用户输入。
-2.  **Thinking (Initial)**: 收到请求，创建消息气泡并置其 `isThinking=true`。
-3.  **Thinking (Active RAG)**: 收到 `type: "rag_step"` 事件。
-    - 状态机保持 `isThinking=true`。
-    - 动态更新当前 RAG 步进文字与状态细节卡片（例如显示 "正在重写查询..."、"Auto-merging 合并完成" 等）。
-    - 往消息项的 `ragSteps` 数组追加步骤，实时推送到组件渲染。
-4.  **Streaming**: 收到首个 `type: "content"` 事件。
-    - **立即切换**: 标记并设置 `isThinking=false`。
-    - 并不销毁或重建气泡，而是隐藏思考详情头部，开始在同一个气泡内流式追加 Markdown 正文文本。
-    - 这样实现了从 "动态检索步骤思考" 到 "大模型流式回答" 的无缝视觉过渡，视觉上极为顺滑。
+1. **Idle**: 等待用户输入。
+2. **Thinking (Initial)**: 收到请求，创建消息气泡并置其 `isThinking=true`。
+3. **Thinking (Active RAG)**: 收到 `type: "rag_step"` 事件。
+   - 状态机保持 `isThinking=true`。
+   - 动态更新当前 RAG 步进文字与状态细节卡片（例如显示 "正在重写查询..."、"Auto-merging 合并完成" 等）。
+   - 往消息项的 `ragSteps` 数组追加步骤，实时推送到组件渲染。
+4. **Streaming**: 收到首个 `type: "content"` 事件。
+   - **立即切换**: 标记并设置 `isThinking=false`。
+   - 并不销毁或重建气泡，而是隐藏思考详情头部，开始在同一个气泡内流式追加 Markdown 正文文本。
+   - 这样实现了从 "动态检索步骤思考" 到 "大模型流式回答" 的无缝视觉过渡，视觉上极为顺滑。
 
 ## 整体架构
 
@@ -543,7 +489,7 @@ chat_with_agent_stream()
     ├── 启动 _agent_worker 后台任务 (asyncio.create_task)
     │     └── agent.astream(stream_mode="messages") 逐 token 产出
     │           ├── AIMessageChunk (文本) → {"type": "content"} 入队
-    │           └── tool_call_chunks (工具调用) → 跳过
+    │           └── tool_call_chunks (工具调用) → {"type": "tool_call", "tool_name", "call_id"} 入队
     │
     └── 主循环：await output_queue.get() → yield SSE
           ▲
@@ -557,7 +503,7 @@ chat_with_agent_stream()
 #### 1) 流式生成 (`agent.py`)
 
 - 使用 LangGraph `agent.astream(stream_mode="messages")` 获取逐 token 的 `AIMessageChunk`。
-- 过滤 `tool_call_chunks`，只转发文本内容给前端。
+- 捕获 `tool_call_chunks`：当模型决定调用工具时，发射 `{"type": "tool_call", "tool_name", "call_id"}` 事件给前端，按 `call_id`（缺省回退到 `tool_name`）去重，同一调用只发一次；文本内容仍正常转发给前端。
 - **关键设计**：Agent 流式循环运行在 `asyncio.create_task` 后台任务中，主生成器只负责从统一 `output_queue` 取事件并 yield。这样 RAG 步骤在工具执行期间（agent 阻塞等待工具返回时）仍然可以实时推送到前端。
 
 #### 2) 实时 RAG 步骤推送 (`tools.py` + `rag_pipeline.py`)
@@ -577,6 +523,7 @@ chat_with_agent_stream()
 
 - `content`：文本 token（打字机效果）
 - `rag_step`：实时检索步骤（`{icon, label, detail}`）
+- `tool_call`：工具调用过程（`{tool_name, call_id}`），按 `call_id`/`tool_name` 去重，与"检索过程"并列展示
 - `trace`：完整 RAG 追踪信息（回答完成后发送）
 - `error`：错误信息
 - `[DONE]`：流结束标记
@@ -601,14 +548,16 @@ StreamingResponse(
 
 - 使用 `response.body.getReader()` + `TextDecoder` 逐块读取。
 - 手动按 `\n\n` 分割 SSE 事件，解析 `data: ` 前缀后的 JSON。
-- `content` 事件追加到消息文本；`rag_step` 事件追加到检索步骤数组并同步更新思考状态文字。
+- `content` 事件追加到消息文本；`rag_step` 事件追加到检索步骤数组并同步更新思考状态文字；`tool_call` 事件追加到消息的 `toolCalls` 数组，并按 `call_id`/`tool_name` 去重。
 
 #### 2) 思考气泡二合一
 
 - 发送消息后立即创建带 `isThinking: true` 的气泡，显示跳动圆点 + 动态文字。
+- 收到 `tool_call` 时，在思考气泡内实时展示"🔧 调用工具：xxx"列表（与 RAG 步骤并列、左侧带主色边线）。
 - 收到 `rag_step` 时，`thinkingLabel` 更新为当前步骤（如"正在检索知识库..."）。
 - 收到第一个 `content` token 时，`isThinking = false`，同一气泡无缝切换为正常文本流。
-- **不存在两个分离的气泡**，从思考 → 检索 → 回答全程在同一个气泡内完成。
+- **不存在两个分离的气泡**，从思考 → 工具调用 → 检索 → 回答全程在同一个气泡内完成。
+- 回答完成后，`ToolCallTrace.vue` 在消息底部以可折叠"工具调用（N）"形式持久展示工具调用过程，与"检索过程"并列。
 
 #### 3) Vue 3 响应式注意事项
 
@@ -632,6 +581,18 @@ StreamingResponse(
 - **即时止损原理**：`agent_task.cancel()` 会立即在任务挂起点注入 `asyncio.CancelledError`。对于流式 LLM 请求，这会触发 `httpx` 关闭 TCP 连接。服务端（OpenAI 等）检测到 client 掉线后会立即停止推理，从而实现**真正的 Token 节省**。
 
 ## 更新日志
+
+### 2026-08-23 网页搜索结果展示带 🔗 超链接标识
+
+- **工具输出格式**：`web_search` 工具返回结果中每条记录改为 markdown 链接格式 `[标题](链接)`，便于大模型在最终回答里直接引用与保留链接。
+- **行内引用规则**：在 `SYSTEM_PROMPT` 中新增规则，要求模型基于 `web_search` 结果回答时，超链接就近放在正文对应陈述句后面（而非末尾统一列出「来源：」段落）。
+- **前端统一标识**：`main.css` 给 `.message-content` 内所有 `<a>` 标签自动添加 `🔗 ` 前缀（代码块 `<pre>` / `<code>` 内除外），用户可通过 🔗 符号一眼识别网页搜索来源链接。
+
+### 2026-08-23 网络搜索工具接入 Firecrawl v2 并支持自定义返回条数
+
+- **Firecrawl v2 后端**：网络搜索工具默认改用 Firecrawl v2 搜索接口（`https://api.firecrawl.dev/v2/search`），结果质量与稳定性优于原 DuckDuckGo。原 `serper` / `duckduckgo` 后端保留，可通过 `WEB_SEARCH_API` 环境变量切换。
+- **智能返回条数**：`web_search` 工具新增 `num_results` 参数，大模型可根据用户提示词中指定的条数（如"搜索 3 条"、"返回前 8 条"）自动设置；未指定时默认返回 5 条，上限 10 条。工具描述中已显式引导模型解析用户意图。
+- **配置变更**：`.env.example` 新增 `FIRECRAWL_API_KEY`，`WEB_SEARCH_API` 默认值由 `duckduckgo` 改为 `firecrawl`。
 
 ### 2026-08-16 新增站点备案信息与 GitHub 仓库入口
 
@@ -699,6 +660,6 @@ StreamingResponse(
 - **问题**：Agent 在执行同步工具（如 `search_knowledge_base`）时，由于运行在线程池中，无法正确获取主线程的 asyncio 事件循环，导致 `emit_rag_step` 事件丢失，前端"思考中"气泡一直静止。
 - **修复**：
   1. **Backend (`service.py`)**：为每个请求创建 `ChatRequestContext`，在其中捕获主线程 `loop` 与本请求 `output_queue`。
-  2. **Backend (`tools.py` + `rag_pipeline.py`)**：使用 per-request tool factory 与显式 `ctx` 参数跨线程调度 RAG step，避免请求间串号。
+  2. **Backend (`tools.py`** **+** **`rag_pipeline.py`)**：使用 per-request tool factory 与显式 `ctx` 参数跨线程调度 RAG step，避免请求间串号。
   3. **Frontend (`stores/chat.ts`)**：在发送消息时初始化空的 `ragSteps: []` 数组，确保 Vue 响应式系统能立即追踪后续的 push 操作。
 - **效果**：用户提问后，思考气泡内实时跳动显示检索步骤（如"🔍 正在检索知识库..." -> "📊 正在评估文档相关性..."），不再只有静态的"正在思考中..."。
