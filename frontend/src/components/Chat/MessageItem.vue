@@ -5,16 +5,8 @@
   >
     <!-- User or finished AI answer -->
     <template v-if="msg.isUser">
-      <MessageContent
-        :text="msg.text"
-        :is-user="true"
-        :msg-index="msgIndex"
-      />
-      <MessageCopyButton
-        v-if="canCopy"
-        :copied="copied"
-        @copy="copyMessage"
-      />
+      <MessageContent :text="msg.text" :is-user="true" :msg-index="msgIndex" />
+      <MessageCopyButton v-if="canCopy" :copied="copied" @copy="copyMessage" />
     </template>
 
     <template v-else>
@@ -52,6 +44,9 @@
           @cite-click="onCiteClick"
         />
 
+        <!-- 工具调用过程 -->
+        <ToolCallTrace :msg="msg" />
+
         <!-- Deep retrieval traces logs -->
         <RetrievalTraceDetails :msg="msg" />
       </template>
@@ -60,79 +55,80 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
-import MessageContent from './MessageContent.vue';
-import MessageCopyButton from './MessageCopyButton.vue';
-import ThinkingTrace from './ThinkingTrace.vue';
-import References from './References.vue';
-import RetrievalTraceDetails from './RetrievalTraceDetails.vue';
-import type { Message } from '@/types/chat';
+  import { computed, onBeforeUnmount, ref } from 'vue'
+  import MessageContent from './MessageContent.vue'
+  import MessageCopyButton from './MessageCopyButton.vue'
+  import ThinkingTrace from './ThinkingTrace.vue'
+  import References from './References.vue'
+  import RetrievalTraceDetails from './RetrievalTraceDetails.vue'
+  import ToolCallTrace from './ToolCallTrace.vue'
+  import type { Message } from '@/types/chat'
 
-const props = defineProps<{
-  msg: Message;
-  msgIndex: number;
-}>();
+  const props = defineProps<{
+    msg: Message
+    msgIndex: number
+  }>()
 
-const emit = defineEmits<{
-  (e: 'cite-click', msgIndex: number, chunkIndex: number): void;
-}>();
+  const emit = defineEmits<{
+    (e: 'cite-click', msgIndex: number, chunkIndex: number): void
+  }>()
 
-const referencesRef = ref<InstanceType<typeof References> | null>(null);
-const copied = ref(false);
-let copiedTimer: number | null = null;
+  const referencesRef = ref<InstanceType<typeof References> | null>(null)
+  const copied = ref(false)
+  let copiedTimer: number | null = null
 
-const canCopy = computed(() => Boolean(props.msg.text?.trim()));
+  const canCopy = computed(() => Boolean(props.msg.text?.trim()))
 
-const openReferences = () => {
-  referencesRef.value?.openDetails();
-};
-
-defineExpose({
-  openReferences
-});
-
-const onCiteClick = (msgIndex: number, chunkIndex: number) => {
-  emit('cite-click', msgIndex, chunkIndex);
-};
-
-const markCopied = () => {
-  copied.value = true;
-  if (copiedTimer !== null) {
-    window.clearTimeout(copiedTimer);
+  const openReferences = () => {
+    referencesRef.value?.openDetails()
   }
-  copiedTimer = window.setTimeout(() => {
-    copied.value = false;
-    copiedTimer = null;
-  }, 1400);
-};
 
-const copyMessage = async () => {
-  const text = props.msg.text?.trim();
-  if (!text) return;
+  defineExpose({
+    openReferences,
+  })
 
-  try {
-    await navigator.clipboard.writeText(text);
-    markCopied();
-  } catch {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.setAttribute('readonly', '');
-    textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px';
-    document.body.appendChild(textarea);
-    textarea.select();
+  const onCiteClick = (msgIndex: number, chunkIndex: number) => {
+    emit('cite-click', msgIndex, chunkIndex)
+  }
+
+  const markCopied = () => {
+    copied.value = true
+    if (copiedTimer !== null) {
+      window.clearTimeout(copiedTimer)
+    }
+    copiedTimer = window.setTimeout(() => {
+      copied.value = false
+      copiedTimer = null
+    }, 1400)
+  }
+
+  const copyMessage = async () => {
+    const text = props.msg.text?.trim()
+    if (!text) return
+
     try {
-      document.execCommand('copy');
-      markCopied();
-    } finally {
-      document.body.removeChild(textarea);
+      await navigator.clipboard.writeText(text)
+      markCopied()
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.left = '-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      try {
+        document.execCommand('copy')
+        markCopied()
+      } finally {
+        document.body.removeChild(textarea)
+      }
     }
   }
-};
 
-onBeforeUnmount(() => {
-  if (copiedTimer !== null) {
-    window.clearTimeout(copiedTimer);
-  }
-});
+  onBeforeUnmount(() => {
+    if (copiedTimer !== null) {
+      window.clearTimeout(copiedTimer)
+    }
+  })
 </script>

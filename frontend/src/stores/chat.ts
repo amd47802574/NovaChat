@@ -246,6 +246,7 @@ export const useChatStore = defineStore('chat', {
           hitlOptions: isHitlRequest ? ragTrace?.hitl_options || [] : undefined,
           hitlResumeText: resumeTextForMessage,
           ragTrace,
+          toolCalls: [],
         };
       });
     },
@@ -284,7 +285,7 @@ export const useChatStore = defineStore('chat', {
       const groups = prev ? [...prev] : [];
       const g = step.group || null;
       const groupLabel = step.group_label || g;
-      
+
       if (g) {
         const idx = groups.findIndex((grp) => grp.group === g);
         if (idx >= 0) {
@@ -482,6 +483,7 @@ export const useChatStore = defineStore('chat', {
         ragTrace: null,
         ragSteps: [],
         _groupedSteps: [],
+        toolCalls: [],
       });
       const botMsgIdx = requestMessages.length - 1;
       this.mergeCachedSessionsIntoHistory();
@@ -580,6 +582,22 @@ export const useChatStore = defineStore('chat', {
                   if (!msg.ragSteps) msg.ragSteps = [];
                   msg.ragSteps.push(data.step);
                   msg._groupedSteps = this.appendRagStepToGroups(msg._groupedSteps || [], data.step);
+                } else if (data.type === 'tool_call') {
+                  const msg = requestMessages[botMsgIdx];
+                  if (!msg) continue;
+                  if (!msg.toolCalls) msg.toolCalls = [];
+                  const toolName = String(data.tool_name || '').trim();
+                  if (!toolName) continue;
+                  const callId = String(data.call_id || '').trim();
+                  const exists = msg.toolCalls.some(
+                    (item) => (callId && item.call_id === callId) || item.tool_name === toolName
+                  );
+                  if (exists) continue;
+                  msg.toolCalls.push({
+                    tool_name: toolName,
+                    call_id: callId || undefined,
+                    started_at: new Date().toISOString(),
+                  });
                 } else if (data.type === 'session_title') {
                   const s = sessionStore.sessions.find(
                     (item) => item.session_id === data.session_id

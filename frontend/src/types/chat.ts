@@ -94,6 +94,12 @@ export interface HitlRequest {
   original_question?: string;
 }
 
+export interface ToolCallEntry {
+  tool_name: string;
+  call_id?: string;
+  started_at?: string;
+}
+
 export interface Message {
   text: string;
   isUser: boolean;
@@ -106,6 +112,7 @@ export interface Message {
   ragTrace?: RagTrace | null;
   ragSteps?: RagStep[];
   _groupedSteps?: GroupedRagStep[];
+  toolCalls?: ToolCallEntry[];
 }
 
 export interface ChatSession {

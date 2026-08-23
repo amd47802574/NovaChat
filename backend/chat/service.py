@@ -581,6 +581,7 @@ async def chat_with_agent_stream(
 
         async def _agent_worker():
             nonlocal full_response, agent_error
+            emitted_tool_calls: set[str] = set()
             try:
                 async for msg, _metadata in request_agent.astream(
                     {"messages": context_messages},
@@ -589,7 +590,28 @@ async def chat_with_agent_stream(
                 ):
                     if not isinstance(msg, AIMessageChunk):
                         continue
-                    if getattr(msg, "tool_call_chunks", None):
+
+                    # 检测工具调用 chunks：模型决定调用工具时，发出 "工具调用-工具名" 事件
+                    tool_call_chunks = getattr(msg, "tool_call_chunks", None)
+                    if tool_call_chunks:
+                        for chunk in tool_call_chunks:
+                            if isinstance(chunk, dict):
+                                tool_name = chunk.get("name") or ""
+                                call_id = chunk.get("id") or ""
+                            else:
+                                tool_name = getattr(chunk, "name", "") or ""
+                                call_id = getattr(chunk, "id", "") or ""
+                            if not tool_name:
+                                continue
+                            dedup_key = call_id or tool_name
+                            if dedup_key in emitted_tool_calls:
+                                continue
+                            emitted_tool_calls.add(dedup_key)
+                            await output_queue.put({
+                                "type": "tool_call",
+                                "tool_name": tool_name,
+                                "call_id": call_id,
+                            })
                         continue
 
                     content = ""
