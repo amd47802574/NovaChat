@@ -608,6 +608,23 @@ body {
     margin-bottom: 10px;
 }
 
+/* 网页搜索来源链接：用 🔗 符号标记，方便用户识别 */
+.message-content a::before {
+    content: "🔗 ";
+    text-decoration: none;
+}
+
+.message-content a {
+    color: #1479df;
+    text-decoration: underline;
+    word-break: break-all;
+}
+
+.message-content pre a::before,
+.message-content code a::before {
+    content: none;
+}
+
 .hitl-panel {
     margin-bottom: 12px;
     padding: 12px 14px;
@@ -1553,6 +1570,24 @@ span.cite-ref:hover {
     padding-left: 4px;
     border-left: 2px solid var(--border-color, #e0e0e0);
     margin-left: 10px;
+}
+
+/* 工具调用过程（思考阶段实时展示） */
+.thinking-tool-calls {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-left: 4px;
+    border-left: 2px solid var(--primary-color, #ff9e99);
+    margin: 6px 0 6px 10px;
+}
+
+.thinking-tool-call-line {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 0.84rem;
+    animation: fadeInTraceLine 0.3s ease;
 }
 
 .thinking-trace-line {
@@ -3815,3 +3850,64 @@ button {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* 工具调用过程展示（与"检索过程"并列） */
+.tool-call-details {
+    margin-top: 6px;
+}
+
+.tool-call-details summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+}
+
+.tool-call-details summary i {
+    color: var(--primary-color, #ff9e99);
+}
+
+.tool-call-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tool-call-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: var(--nova-surface-soft, rgba(0, 0, 0, 0.03));
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.tool-call-index {
+    flex: 0 0 auto;
+    color: var(--nova-text-muted, #a5a5a5);
+    font-variant-numeric: tabular-nums;
+}
+
+.tool-call-icon {
+    flex: 0 0 auto;
+}
+
+.tool-call-name {
+    flex: 1 1 auto;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    color: var(--primary-color, #ff9e99);
+    word-break: break-all;
+}
+
+.tool-call-time {
+    flex: 0 0 auto;
+    color: var(--nova-text-muted, #a5a5a5);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+}
+
