@@ -1,6 +1,3 @@
-import os
-from typing import Optional
-
 import requests
 
 try:
@@ -8,62 +5,41 @@ try:
 except ImportError:
     from langchain_core.tools import tool
 
-AMAP_WEATHER_API = os.getenv("AMAP_WEATHER_API")
-AMAP_API_KEY = os.getenv("AMAP_API_KEY")
+# uapis.cn 公共天气接口（免费，无需 API Key）
+UAPIS_WEATHER_API = "https://uapis.cn/api/v1/misc/weather"
 
 
-def get_current_weather(location: str, extensions: Optional[str] = "base") -> str:
+def get_current_weather(city: str) -> str:
     """获取天气信息"""
-    if not location:
-        return "location参数不能为空"
-    if extensions not in ("base", "all"):
-        return "extensions参数错误，请输入base或all"
+    if not city or not city.strip():
+        return "city 参数不能为空"
 
-    if not AMAP_WEATHER_API or not AMAP_API_KEY:
-        return "天气服务未配置（缺少 AMAP_WEATHER_API 或 AMAP_API_KEY）"
-
-    params = {
-        "key": AMAP_API_KEY,
-        "city": location,
-        "extensions": extensions,
-        "output": "json",
-    }
+    params = {"city": city.strip()}
 
     try:
-        resp = requests.get(AMAP_WEATHER_API, params=params, timeout=10)
+        resp = requests.get(UAPIS_WEATHER_API, params=params, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        if data.get("status") != "1":
-            return f"查询失败：{data.get('info', '未知错误')}"
 
-        if extensions == "base":
-            lives = data.get("lives", [])
-            if not lives:
-                return f"未查询到 {location} 的天气数据"
-            w = lives[0]
-            return (
-                f"【{w.get('city', location)} 实时天气】\n"
-                f"天气状况：{w.get('weather', '未知')}\n"
-                f"温度：{w.get('temperature', '未知')}℃\n"
-                f"湿度：{w.get('humidity', '未知')}%\n"
-                f"风向：{w.get('winddirection', '未知')}\n"
-                f"风力：{w.get('windpower', '未知')}级\n"
-                f"更新时间：{w.get('reporttime', '未知')}"
-            )
+        # 成功响应应包含 city / weather 字段
+        if not data or "city" not in data or "weather" not in data:
+            return f"未查询到 {city} 的天气数据"
 
-        forecasts = data.get("forecasts", [])
-        if not forecasts:
-            return f"未查询到 {location} 的天气预报数据"
-        f0 = forecasts[0]
-        out = [f"【{f0.get('city', location)} 天气预报】", f"更新时间：{f0.get('reporttime', '未知')}", ""]
-        today = (f0.get("casts") or [])[0] if f0.get("casts") else {}
-        out += [
-            "今日天气：",
-            f"  白天：{today.get('dayweather','未知')}",
-            f"  夜间：{today.get('nightweather','未知')}",
-            f"  气温：{today.get('nighttemp','未知')}~{today.get('daytemp','未知')}℃",
-        ]
-        return "\n".join(out)
+        region = data.get("city", city)
+        if data.get("province"):
+            region = f"{data.get('province')}{region}"
+        if data.get("district"):
+            region = f"{region}{data.get('district')}"
+
+        return (
+            f"【{region} 实时天气】\n"
+            f"天气状况：{data.get('weather', '未知')}\n"
+            f"温度：{data.get('temperature', '未知')}℃\n"
+            f"湿度：{data.get('humidity', '未知')}%\n"
+            f"风向：{data.get('wind_direction', '未知')}\n"
+            f"风力：{data.get('wind_power', '未知')}\n"
+            f"更新时间：{data.get('report_time', '未知')}"
+        )
 
     except requests.exceptions.Timeout:
         return "错误：请求天气服务超时"
@@ -74,6 +50,6 @@ def get_current_weather(location: str, extensions: Optional[str] = "base") -> st
 
 
 @tool("get_current_weather")
-def get_current_weather_tool(location: str, extensions: Optional[str] = "base") -> str:
-    """Get current weather for a city in China."""
-    return get_current_weather(location, extensions)
+def get_current_weather_tool(city: str) -> str:
+    """获取中国某城市的实时天气。"""
+    return get_current_weather(city)

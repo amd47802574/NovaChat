@@ -14,14 +14,14 @@ from sqlalchemy import func
 @tool("list_documents")
 def list_documents(detailed: bool = False) -> str:
     """
-    List all documents in the knowledge base with their chunk counts.
-    Use this tool when users want to know what documents are available in the knowledge base.
-    
+    列出知识库中的所有文档及其片段数量。
+    当用户希望了解知识库中有哪些可用文档时使用此工具。
+
     Args:
-        detailed: If True, include file type and last update time for each document.
-    
+        detailed: 若为 True，则包含每个文档的文件类型和最后更新时间。
+
     Returns:
-        Formatted string with document names and chunk counts.
+        包含文档名称和片段数量的格式化字符串。
     """
     try:
         with SessionLocal() as session:

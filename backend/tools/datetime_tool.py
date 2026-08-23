@@ -17,15 +17,15 @@ except ImportError:
 @tool("get_current_time")
 def get_current_time(timezone: Optional[str] = "Asia/Shanghai") -> str:
     """
-    Get current date, time, and weekday for a specific timezone.
-    Use this tool when users ask about current time, date, or need time-related information.
-    
+    获取指定时区的当前日期、时间和星期。
+    当用户询问当前时间、日期或需要与时间相关的信息时使用此工具。
+
     Args:
-        timezone: Timezone name (e.g., 'Asia/Shanghai', 'America/New_York', 'Europe/London').
-                  Defaults to 'Asia/Shanghai' (Beijing time).
-    
+        timezone: 时区名称（例如 'Asia/Shanghai'、'America/New_York'、'Europe/London'）。
+                  默认为 'Asia/Shanghai'（北京时间）。
+
     Returns:
-        Formatted string with current date, time, and weekday.
+        包含当前日期、时间和星期的格式化字符串。
     """
     try:
         # Define weekday names

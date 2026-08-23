@@ -6,7 +6,7 @@ from backend.chat.request_context import ChatRequestContext
 def make_search_knowledge_base(ctx: ChatRequestContext):
     @tool("search_knowledge_base")
     def search_knowledge_base(query: str) -> str:
-        """Search for information in the knowledge base using hybrid retrieval (dense + sparse vectors)."""
+        """使用混合检索（稠密向量 + 稀疏向量）在知识库中检索信息。"""
         if not ctx.acquire_knowledge_tool_slot():
             return (
                 "TOOL_CALL_LIMIT_REACHED: search_knowledge_base has already been called once in this turn. "

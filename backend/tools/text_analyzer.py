@@ -18,7 +18,7 @@ BASE_URL = os.getenv("BASE_URL")
 
 
 def extract_keywords_simple(text: str, top_n: int = 10) -> list:
-    """Simple keyword extraction without LLM."""
+    """不使用 LLM 的简单关键词提取。"""
     stop_words = {
         '的', '了', '和', '是', '在', '有', '我', '他', '她', '它',
         '这', '那', '就', '也', '都', '还', '会', '能', '可以', '什么',
@@ -36,7 +36,7 @@ def extract_keywords_simple(text: str, top_n: int = 10) -> list:
 
 
 def analyze_with_llm(text: str, analysis_type: str) -> str:
-    """Use LLM for advanced text analysis."""
+    """使用 LLM 进行高级文本分析。"""
     try:
         model = init_chat_model(
             model=FAST_MODEL,
@@ -80,17 +80,17 @@ def analyze_text(
     use_llm: bool = False
 ) -> str:
     """
-    Analyze text for summary, keywords, or sentiment.
-    Use this tool to quickly extract key information from long text.
-    
+    分析文本的摘要、关键词或情感。
+    使用此工具从长文本中快速提取关键信息。
+
     Args:
-        text: Text content to analyze.
-        analysis_type: Type of analysis - 'keywords', 'summary', or 'sentiment'.
-        top_n: Number of keywords to extract (default: 10, for keywords analysis).
-        use_llm: Use LLM for advanced analysis (for summary and sentiment, default: False).
-    
+        text: 待分析的文本内容。
+        analysis_type: 分析类型 —— 'keywords'、'summary' 或 'sentiment'。
+        top_n: 要提取的关键词数量（默认：10，用于关键词分析）。
+        use_llm: 是否使用 LLM 进行高级分析（用于摘要和情感，默认：False）。
+
     Returns:
-        Analysis results based on the specified type.
+        基于指定类型的分析结果。
     """
     try:
         # Validate inputs

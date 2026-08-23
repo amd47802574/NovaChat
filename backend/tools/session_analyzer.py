@@ -14,7 +14,7 @@ from backend.db.models import ChatMessage, ChatSession
 
 
 def extract_keywords(text: str, top_n: int = 5) -> list:
-    """Simple keyword extraction from text."""
+    """从文本中简单提取关键词。"""
     # Remove common Chinese and English stop words
     stop_words = {
         '的', '了', '和', '是', '在', '有', '我', '他', '她', '它',
@@ -41,16 +41,16 @@ def analyze_conversation_history(
     analysis_type: str = "summary"
 ) -> str:
     """
-    Analyze conversation history for patterns, topics, and statistics.
-    Use this tool to understand user preferences and conversation patterns.
-    
+    分析会话历史的模式、主题和统计数据。
+    使用此工具了解用户偏好和会话模式。
+
     Args:
-        session_id: Specific session ID to analyze. If None, analyzes recent sessions.
-        limit: Number of recent messages to analyze (default: 20).
-        analysis_type: Type of analysis - 'summary', 'topics', or 'timeline'.
-    
+        session_id: 指定要分析的会话 ID。若为 None，则分析最近的会话。
+        limit: 要分析的最近消息数量（默认：20）。
+        analysis_type: 分析类型 —— 'summary'、'topics' 或 'timeline'。
+
     Returns:
-        Analysis results including message count, top topics, and timeline.
+        分析结果，包含消息数量、热门主题和时间线。
     """
     try:
         with SessionLocal() as session:

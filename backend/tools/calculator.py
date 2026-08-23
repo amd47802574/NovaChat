@@ -42,14 +42,14 @@ ALLOWED_MATH_FUNCTIONS = {
 
 def safe_eval(expression: str) -> Union[float, int]:
     """
-    Safely evaluate a mathematical expression using AST parsing.
-    Only allows basic math operations and predefined functions.
+    使用 AST 解析安全地求解数学表达式。
+    仅允许基础数学运算和预定义函数。
     """
     # Parse expression to AST
     tree = ast.parse(expression, mode='eval')
     
     def evaluate(node):
-        """Recursively evaluate AST nodes."""
+        """递归求值 AST 节点。"""
         if isinstance(node, ast.Num):
             return node.n
         elif isinstance(node, ast.Constant):
@@ -86,15 +86,15 @@ def safe_eval(expression: str) -> Union[float, int]:
 @tool("calculate")
 def calculate(expression: str) -> str:
     """
-    Safely evaluate mathematical expressions.
-    Supports basic operations (+, -, *, /, %, **) and common math functions (sqrt, sin, cos, tan, log, exp, etc.).
-    Use this tool when users need precise mathematical calculations.
-    
+    安全地求解数学表达式。
+    支持基础运算（+、-、*、/、%、**）以及常用数学函数（sqrt、sin、cos、tan、log、exp 等）。
+    当用户需要进行精确的数学计算时使用此工具。
+
     Args:
-        expression: Mathematical expression to evaluate (e.g., '2 + 3 * 4', 'sqrt(16)', 'sin(pi/2)').
-    
+        expression: 待求解的数学表达式（例如 '2 + 3 * 4'、'sqrt(16)'、'sin(pi/2)'）。
+
     Returns:
-        Result of the calculation or error message.
+        计算结果或错误信息。
     """
     try:
         # Clean expression
