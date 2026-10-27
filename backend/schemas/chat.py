@@ -3,9 +3,23 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 
+class ChatAttachmentRef(BaseModel):
+    """聊天请求携带的附件引用，服务端按 id 与归属重新校验，不信任客户端内容。"""
+
+    id: str
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = "default_session"
+    attachments: Optional[List[ChatAttachmentRef]] = None
+
+
+class MessageAttachment(BaseModel):
+    id: str
+    filename: str
+    kind: str  # image / document
+    mime: Optional[str] = None
 
 
 class RetrievedChunk(BaseModel):
@@ -91,6 +105,7 @@ class MessageInfo(BaseModel):
     content: str
     timestamp: str
     rag_trace: Optional[RagTrace] = None
+    attachments: Optional[List[MessageAttachment]] = None
 
 
 class SessionMessagesResponse(BaseModel):
@@ -127,5 +142,14 @@ class SessionUpdateResponse(BaseModel):
 
 
 class SessionClearResponse(BaseModel):
+    deleted_count: int
+    message: str
+
+
+class SessionBatchDeleteRequest(BaseModel):
+    session_ids: List[str]
+
+
+class SessionBatchDeleteResponse(BaseModel):
     deleted_count: int
     message: str

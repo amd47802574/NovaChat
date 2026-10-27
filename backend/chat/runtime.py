@@ -5,14 +5,14 @@ from langchain.chat_models import init_chat_model
 
 from backend.chat.request_context import ChatRequestContext
 from backend.tools import (
-    get_current_weather,
-    make_search_knowledge_base,
-    list_documents,
-    get_current_time,
-    calculate,
     analyze_conversation_history,
-    web_search,
     analyze_text,
+    calculate,
+    get_current_time,
+    get_current_weather,
+    list_documents,
+    make_search_knowledge_base,
+    web_search,
 )
 from backend.tools.mcp import load_external_mcp_tools_sync
 
@@ -89,7 +89,7 @@ def create_agent_for_request(ctx: ChatRequestContext):
     # 合并原有系统提示词和模型信息
     full_system_prompt = SYSTEM_PROMPT + model_info_prompt
 
-    # 加载本地工具(包含请求上下文相关的 search_knowledge_base)
+    # 本地工具始终保留作为降级路径，避免 MCP 子进程瞬时失败后能力完全消失。
     local_tools = [
         get_current_weather,
         make_search_knowledge_base(ctx),
@@ -101,12 +101,11 @@ def create_agent_for_request(ctx: ChatRequestContext):
         analyze_text,
     ]
 
-    # 加载外部 MCP Server 提供的工具(失败返回空列表,不影响主流程)
-    # 注意:MCP 工具加载是同步阻塞调用,内部会通过子进程拉起配置的外部 Server。
-    # 如需关闭此行为,设置环境变量 NOVACHAT_MCP_ENABLED=0。
+    # MCP 工具加载成功时按名称覆盖本地工具；失败时继续使用本地实现。
     external_mcp_tools = load_external_mcp_tools_sync()
-
-    all_tools = local_tools + external_mcp_tools
+    tools_by_name = {tool.name: tool for tool in local_tools}
+    tools_by_name.update({tool.name: tool for tool in external_mcp_tools})
+    all_tools = list(tools_by_name.values())
 
     return create_agent(
         model=model,

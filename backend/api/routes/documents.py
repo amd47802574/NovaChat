@@ -110,6 +110,9 @@ async def list_documents(_: User = Depends(require_admin)):
         results = milvus_manager.query(
             output_fields=["filename", "file_type"],
             limit=10000,
+            # 强一致：保证刚入库的文档在上传任务完成后的第一次列表查询就能读到，
+            # 默认 Bounded 一致性允许读到旧快照，表现为“上传后必须刷新页面才出现”。
+            consistency_level="Strong",
         )
 
         file_stats = {}

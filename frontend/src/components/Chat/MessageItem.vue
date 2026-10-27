@@ -5,6 +5,7 @@
   >
     <!-- User or finished AI answer -->
     <template v-if="msg.isUser">
+      <MessageAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
       <MessageContent :text="msg.text" :is-user="true" :msg-index="msgIndex" />
       <MessageCopyButton v-if="canCopy" :copied="copied" @copy="copyMessage" />
     </template>
@@ -58,6 +59,7 @@
   import { computed, onBeforeUnmount, ref } from 'vue'
   import MessageContent from './MessageContent.vue'
   import MessageCopyButton from './MessageCopyButton.vue'
+  import MessageAttachments from './MessageAttachments.vue'
   import ThinkingTrace from './ThinkingTrace.vue'
   import References from './References.vue'
   import RetrievalTraceDetails from './RetrievalTraceDetails.vue'

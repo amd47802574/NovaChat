@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.infra.database import Base
@@ -42,8 +42,30 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     rag_trace: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 用户消息携带的聊天附件元数据列表（[{id, filename, kind, mime}]），AI 消息为空
+    attachments: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     session = relationship("ChatSession", back_populates="messages")
+
+
+class ChatAttachment(Base):
+    """聊天附件：用户在对话中上传的图片或文档，落盘存储并登记归属。"""
+
+    __tablename__ = "chat_attachments"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 相对于附件存储目录的文件名（uuid + 安全后缀），避免路径穿越
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # image / document
+    mime: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 文档类附件在上传时提取的文本，发送时注入模型上下文；图片为空
+    extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 是否已被某条聊天消息引用；未被引用的过期附件可安全清理
+    used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class ParentChunk(Base):

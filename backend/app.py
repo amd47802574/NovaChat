@@ -12,6 +12,7 @@ from backend.env import PROJECT_ROOT, load_env
 load_env()
 
 from fastapi import FastAPI
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -27,6 +28,10 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def _startup_init_db():
         init_db()
+        # 清理用户上传后未发送的过期聊天附件，避免磁盘与表记录无限堆积
+        from backend.chat.attachments import prune_stale_attachments
+
+        await run_in_threadpool(prune_stale_attachments)
 
     app.add_middleware(
         CORSMiddleware,

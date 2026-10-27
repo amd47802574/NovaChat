@@ -10,12 +10,46 @@
       >
         <aside class="history-sidebar" aria-label="历史会话">
           <div class="history-header">
-            <div>
+            <div class="header-titles">
               <span class="drawer-brand">NovaChat</span>
               <h3>全部对话</h3>
             </div>
-            <button class="close-btn" type="button" title="关闭侧边栏" @click="closeDrawer">
-              <i class="fas fa-xmark"></i>
+            <div class="header-actions">
+              <button
+                v-if="!selectMode"
+                class="batch-manage-btn"
+                type="button"
+                title="批量管理会话"
+                @click="enterSelectMode"
+              >
+                <i class="far fa-square-check"></i>
+                <span>批量管理</span>
+              </button>
+              <button v-else class="batch-cancel-btn" type="button" @click="exitSelectMode">
+                <span>取消</span>
+              </button>
+              <button class="close-btn" type="button" title="关闭侧边栏" @click="closeDrawer">
+                <i class="fas fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="selectMode" class="batch-toolbar">
+            <button class="batch-select-all" type="button" @click="toggleSelectAll">
+              <span class="select-checkbox" :class="{ checked: allSelected }">
+                <i v-if="allSelected" class="fas fa-check"></i>
+              </span>
+              <span>全选</span>
+              <span class="batch-count">已选 {{ selectedCount }}</span>
+            </button>
+            <button
+              class="batch-delete-btn"
+              type="button"
+              :disabled="selectedCount === 0"
+              @click="onBatchDelete"
+            >
+              <i class="far fa-trash-can"></i>
+              <span>删除{{ selectedCount > 0 ? ` (${selectedCount})` : '' }}</span>
             </button>
           </div>
 
@@ -33,13 +67,16 @@
               :key="session.session_id"
               class="history-swipe-row"
               :class="{
-                revealed: swipedSessionId === session.session_id,
-                'menu-open': openMenuId === session.session_id,
+                revealed: !selectMode && swipedSessionId === session.session_id,
+                'menu-open': !selectMode && openMenuId === session.session_id,
+                'select-mode': selectMode,
+                selected: selectMode && selectedIds.includes(session.session_id),
               }"
               @touchstart.passive="onItemTouchStart($event, session.session_id)"
               @touchend.passive="onItemTouchEnd($event, session.session_id)"
             >
               <button
+                v-if="!selectMode"
                 class="swipe-delete-btn"
                 type="button"
                 title="删除会话"
@@ -50,8 +87,16 @@
               <div
                 class="history-item"
                 :class="{ active: session.session_id === chatStore.sessionId }"
-                @click="onLoadSession(session.session_id)"
+                @click="selectMode ? toggleSelect(session.session_id) : onLoadSession(session.session_id)"
               >
+                <span
+                  v-if="selectMode"
+                  class="select-checkbox"
+                  :class="{ checked: selectedIds.includes(session.session_id), disabled: session.isStreaming }"
+                  @click.stop="toggleSelect(session.session_id)"
+                >
+                  <i v-if="selectedIds.includes(session.session_id)" class="fas fa-check"></i>
+                </span>
                 <i v-if="session.pinned" class="fas fa-thumbtack pinned-icon"></i>
                 <div class="session-info">
                   <div class="session-title">{{ session.title || '未命名对话' }}</div>
@@ -61,6 +106,7 @@
                   </div>
                 </div>
                 <button
+                  v-if="!selectMode"
                   class="session-more-btn"
                   type="button"
                   title="会话操作"
@@ -69,7 +115,7 @@
                   <i class="fas fa-ellipsis"></i>
                 </button>
                 <Transition name="menu-pop">
-                  <div v-if="openMenuId === session.session_id" class="session-menu" @click.stop>
+                  <div v-if="!selectMode && openMenuId === session.session_id" class="session-menu" @click.stop>
                     <button type="button" @click="onRenameSession(session.session_id)">
                       <i class="far fa-pen-to-square"></i>重命名
                     </button>
@@ -125,6 +171,8 @@ const swipedSessionId = ref<string | null>(null);
 const touchStartX = ref(0);
 const drawerTouchStartX = ref(0);
 const isDark = ref(document.documentElement.dataset.theme === 'dark');
+const selectMode = ref(false);
+const selectedIds = ref<string[]>([]);
 
 const sortedSessions = computed(() => {
   return [...sessionStore.sessions].sort((a, b) => {
@@ -133,10 +181,73 @@ const sortedSessions = computed(() => {
   });
 });
 
+// 批量模式下可选中的会话（生成中的会话不可删除，需排除）。
+const selectableSessions = computed(() => sortedSessions.value.filter((s) => !s.isStreaming));
+const allSelected = computed(
+  () =>
+    selectableSessions.value.length > 0 &&
+    selectableSessions.value.every((s) => selectedIds.value.includes(s.session_id))
+);
+const selectedCount = computed(() => selectedIds.value.length);
+
 const closeDrawer = () => {
   sessionStore.showHistorySidebar = false;
   openMenuId.value = null;
   swipedSessionId.value = null;
+  selectMode.value = false;
+  selectedIds.value = [];
+};
+
+const enterSelectMode = () => {
+  openMenuId.value = null;
+  swipedSessionId.value = null;
+  selectedIds.value = [];
+  selectMode.value = true;
+};
+
+const exitSelectMode = () => {
+  selectMode.value = false;
+  selectedIds.value = [];
+};
+
+const toggleSelect = (sessionId: string) => {
+  const session = sessionStore.sessions.find((item) => item.session_id === sessionId);
+  if (!session || session.isStreaming) return;
+  const index = selectedIds.value.indexOf(sessionId);
+  if (index >= 0) selectedIds.value.splice(index, 1);
+  else selectedIds.value.push(sessionId);
+};
+
+const toggleSelectAll = () => {
+  if (allSelected.value) {
+    selectedIds.value = [];
+  } else {
+    selectedIds.value = selectableSessions.value.map((s) => s.session_id);
+  }
+};
+
+const onBatchDelete = async () => {
+  const deletable = selectedIds.value.filter((id) => {
+    const session = sessionStore.sessions.find((item) => item.session_id === id);
+    return session && !session.isStreaming;
+  });
+  if (!deletable.length) {
+    alert('请先选择要删除的会话');
+    return;
+  }
+  if (!confirm(`确定删除选中的 ${deletable.length} 个会话吗？此操作无法撤销。`)) return;
+
+  try {
+    await sessionStore.deleteSessions(deletable);
+    deletable.forEach((id) => {
+      delete chatStore.messagesBySession[id];
+      delete chatStore.pendingHitlBySession[id];
+    });
+    if (deletable.includes(chatStore.sessionId)) chatStore.handleNewChat();
+    exitSelectMode();
+  } catch (error: any) {
+    alert('批量删除失败：' + error.message);
+  }
 };
 
 const formatTime = (value: string) => {
@@ -244,11 +355,13 @@ const openSettings = () => {
 };
 
 const onItemTouchStart = (event: TouchEvent, sessionId: string) => {
+  if (selectMode.value) return;
   touchStartX.value = event.changedTouches[0]?.clientX || 0;
   if (swipedSessionId.value !== sessionId) swipedSessionId.value = null;
 };
 
 const onItemTouchEnd = (event: TouchEvent, sessionId: string) => {
+  if (selectMode.value) return;
   const endX = event.changedTouches[0]?.clientX || 0;
   const distance = endX - touchStartX.value;
   if (distance < -46) swipedSessionId.value = sessionId;

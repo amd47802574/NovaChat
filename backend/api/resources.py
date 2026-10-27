@@ -12,6 +12,8 @@ from backend.indexing.milvus_client import get_milvus_store
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR.parent / "data"
 UPLOAD_DIR = DATA_DIR / "documents"
+# 聊天附件（图片/文档）存储目录，与知识库文档目录分开管理
+CHAT_UPLOAD_DIR = DATA_DIR / "chat_uploads"
 
 loader = DocumentLoader()
 parent_chunk_store = ParentChunkStore()
@@ -89,3 +91,7 @@ async def save_upload_file(file, file_path: Path) -> None:
 
 def ensure_upload_dir() -> None:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+def ensure_chat_upload_dir() -> None:
+    os.makedirs(CHAT_UPLOAD_DIR, exist_ok=True)

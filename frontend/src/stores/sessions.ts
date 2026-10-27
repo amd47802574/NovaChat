@@ -61,6 +61,21 @@ export const useSessionStore = defineStore('sessions', {
       }
     },
 
+    async deleteSessions(sessionIds: string[]) {
+      if (!sessionIds.length) return 0;
+      try {
+        const response = await api.delete('/sessions/batch', {
+          data: { session_ids: sessionIds },
+        });
+        const deletedIds = new Set(sessionIds);
+        this.sessions = this.sessions.filter((s) => !deletedIds.has(s.session_id));
+        return response.data.deleted_count ?? sessionIds.length;
+      } catch (error: any) {
+        const errMsg = error.response?.data?.detail || error.message || '批量删除会话失败';
+        throw new Error(errMsg);
+      }
+    },
+
     sortSessions() {
       this.sessions.sort((a, b) => {
         if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;

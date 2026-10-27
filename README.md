@@ -1,6 +1,6 @@
 # NovaChat（星智问答）
 
-NovaChat（星智问答）是一个基于 RAG 的智能知识问答平台，支持混合检索、结果重排、来源引用、多轮会话与知识库管理。
+NovaChat（星智问答）是一个基于 Corrective RAG 的智能知识问答平台，支持混合检索、结果重排、来源引用、多轮会话与知识库管理。
 
 ## Docker部署（不包含前后端，需额外启动）
 
@@ -334,7 +334,7 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 需在仓库根目录或运行环境配置：
 
 - 模型相关：`ARK_API_KEY`、`MODEL`、`BASE_URL`
-- 稠密向量：`EMBEDDING_MODEL`、`EMBEDDING_DEVICE`、`DENSE_EMBEDDING_DIM`（需与 Milvus 集合 `dense_embedding` 维度一致）
+- 稠密向量：`EMBEDDING_MODEL`、`EMBEDDING_DEVICE`、`DENSE_EMBEDDING_DIM`（需与 Milvus 集合 `dense_embedding` 维度一致）、`HF_ENDPOINT`（HuggingFace 镜像源）、`HF_HUB_OFFLINE`（默认 `1`，模型已下载后跳过联网检查避免启动卡死；设为 `0` 可下载新模型）
 - 密集与稀疏：由 Milvus 原生支持的内部分词与 BM25 函数自动处理，无需手动配置客户端 `BM25_STATE_PATH`
 - Rerank 相关：`RERANK_MODEL`、`RERANK_BINDING_HOST`、`RERANK_API_KEY`
 - Milvus：`MILVUS_HOST`、`MILVUS_PORT`、`MILVUS_COLLECTION`
@@ -343,8 +343,9 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
 - 密码参数：`PASSWORD_PBKDF2_ROUNDS`
 - 检索候选池：`RETRIEVAL_CANDIDATE_K`（固定候选数，优先）、`RETRIEVAL_CANDIDATE_MULTIPLIER`（未设 K 时 `max(top_k × 倍数, top_k)`，默认 `3`）
 - Auto-merging：`AUTO_MERGE_ENABLED`、`AUTO_MERGE_THRESHOLD`、`LEAF_RETRIEVE_LEVEL`
-- 工具：天气查询使用 [uapis.cn](https://uapis.cn) 公共接口（免费，无需配置）；网络搜索 `WEB_SEARCH_API`（默认 `firecrawl`，可选 `serper` / `duckduckgo`）、`FIRECRAWL_API_KEY`、`SERPER_API_KEY`
+- 工具：天气查询优先使用 [uapis.cn](https://uapis.cn) 公共接口，失败时自动切换 Open-Meteo 备用源（均免费、无需配置）；网络搜索 `WEB_SEARCH_API`（默认 `firecrawl`，可选 `serper` / `duckduckgo`）、`FIRECRAWL_API_KEY`、`SERPER_API_KEY`
 - MCP：`NOVACHAT_MCP_ENABLED`（默认 `1` 开启;设为 `0` 关闭外部 MCP Server 工具加载）
+- 聊天附件：`CHAT_VISION_ENABLED`（默认 `0`）。为 `0` 时只允许上传文档（pdf/doc/docx/txt/md/xls/xlsx），图片会被明确拒绝；所用模型支持图像理解时设为 `1`，图片会按多模态消息发给模型
 
 ## MCP 工具协议支持
 
@@ -360,6 +361,8 @@ python -m backend.tools.mcp.server
 ```
 
 > `search_knowledge_base` 依赖每请求的 `ChatRequestContext`,不在此处暴露(子进程无法访问主进程上下文)。
+>
+> Agent 会优先使用 MCP Server 提供的同名工具，同时保留本地实现作为降级路径；MCP 子进程启动失败时，天气、时间、搜索和计算等能力仍可继续使用。
 
 ### 客户端:接入外部 MCP Server
 
@@ -370,20 +373,23 @@ cp mcp_config.example.json mcp_config.json
 # 编辑 mcp_config.json,填入 npx 命令、参数、env 等
 ```
 
-配置格式兼容 Claude Desktop:
+配置格式兼容 Claude Desktop；本地 NovaChat 工具建议使用当前后端解释器启动：
 
 ```json
 {
   "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/allowed/path"]
+    "novachat-local": {
+      "command": "${PYTHON}",
+      "args": ["-m", "backend.tools.mcp.server"],
+      "cwd": "${PROJECT_ROOT}"
     }
   }
 }
 ```
 
-启动后端时,`backend/chat/runtime.py` 会自动通过 stdio 拉起所有配置的外部 Server,并把它们的工具与本地工具一起注入 Agent。失败的 Server 会被跳过并记录警告,不影响主流程。
+`${PYTHON}` 会解析为当前运行后端的 Python（包括 `.venv`），`${PROJECT_ROOT}` 会解析为项目根目录。NovaChat 还会让本地 MCP 子进程继承 API Key 等运行环境，并强制使用 UTF-8 stdio，避免搜索结果包含中文时协议响应失败。
+
+启动后端时,`backend/chat/runtime.py` 会自动通过 stdio 拉起所有配置的外部 Server，并按工具名覆盖对应的本地实现。失败的 Server 会被跳过并记录警告，Agent 将继续使用本地工具，不影响天气、时间、搜索和计算等基础能力。
 
 ### 验证测试
 
@@ -400,8 +406,11 @@ cp mcp_config.example.json mcp_config.json
   - `POST /auth/login`：登录，返回 Bearer Token。
   - `GET /auth/me`：获取当前登录用户信息。
 - 聊天
-  - `POST /chat`：聊天（非流式），入参 `message`、`session_id`。
+  - `POST /chat`：聊天（非流式），入参 `message`、`session_id`、可选 `attachments:[{id}]`。
   - `POST /chat/stream`：聊天（流式 SSE），入参同上，返回 `text/event-stream`。
+  - `GET /chat/capabilities`：返回 `{vision_enabled}`，前端据此决定附件选择器是否接受图片。
+  - `POST /chat/attachments`：上传聊天附件（`multipart/form-data`），返回附件 `id`/`filename`/`kind` 等元数据。
+  - `GET /chat/attachments/{id}/file`：取回自己上传的附件原始文件（图片气泡与下载走该接口，需 Bearer Token）。
 - 会话（用户隔离）
   - `GET /sessions`：列出当前用户会话。
   - `GET /sessions/{session_id}`：拉取当前用户某会话消息。
@@ -581,6 +590,20 @@ StreamingResponse(
 - **即时止损原理**：`agent_task.cancel()` 会立即在任务挂起点注入 `asyncio.CancelledError`。对于流式 LLM 请求，这会触发 `httpx` 关闭 TCP 连接。服务端（OpenAI 等）检测到 client 掉线后会立即停止推理，从而实现**真正的 Token 节省**。
 
 ## 更新日志
+
+### 2026-10-27 用户对话支持「添加图片或文件」
+
+- **附件上传**：`POST /chat/attachments` 保存文件到 `data/chat_uploads/` 并登记到新表 `chat_attachments`。图片限 8MB（png/jpg/jpeg/gif/webp/bmp），文档限 30MB（pdf/doc/docx/txt/md/xls/xlsx），单条消息最多 6 个附件；未发送的附件 24 小时后在启动时自动清理。
+- **文档注入**：文档在**上传时**提取纯文本（复用知识库侧的解析链路，`.doc` 走 antiword → LibreOffice → Word COM 降级），发送时以「【附件文档：文件名】+ 正文」注入模型上下文，单文档上限 3 万字、单条消息合计 6 万字，超限截断并明确标注。
+- **图片多模态**：使用支持图像理解的模型时设置 `CHAT_VISION_ENABLED=1`，图片会转成 `image_url` 内容块与其他文本一起发给模型；未开启时上传图片直接返回可读错误，而不是把 provider 的原始报错抛给用户。
+- **展示与持久化**：用户消息落库保留纯文本内容，附件元数据（`id`/`filename`/`kind`/`mime`）存入 `chat_messages.attachments`；气泡内渲染图片缩略图（点击大图预览）与文档卡片（点击下载），刷新或切换会话后仍然可见。附件按用户隔离，取文件需 Bearer Token。
+- **其它**：前端附件在上传阶段完成（带进度与失败提示），支持从剪贴板粘贴图片；`chat_messages` 采用「删后重插」写库，现按下标继承历史消息的 `rag_trace`/附件元数据，避免开新一轮时清空历史展示数据。
+
+### 2026-08-24 修复后端启动卡死导致首页持续转圈
+
+- **根因**：`backend/indexing/embedding.py` 在模块导入时实例化 `HuggingFaceEmbeddings`，其内部会联网检查模型更新。当 `HF_ENDPOINT` 指向的镜像站（`hf-mirror.com`）连接超时或不可达时，整个后端启动流程被阻塞，FastAPI 无法处理 HTTP 请求，表现为 `http://localhost:8000/` 一直转圈。
+- **修复**：在 [backend/env.py](backend/env.py) 的 `load_env()` 中，当用户未显式设置 `HF_HUB_OFFLINE` 时默认置为 `1`，使 `huggingface_hub` 走离线模式直接使用本地缓存。模型已下载到本地后无需每次启动联网校验，启动耗时从"无限卡死"降至正常水平。
+- **可配置**：如需下载新模型，在 `.env` 中设置 `HF_HUB_OFFLINE=0` 或临时注释该行即可恢复联网。
 
 ### 2026-08-23 网页搜索结果展示带 🔗 超链接标识
 

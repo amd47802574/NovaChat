@@ -71,15 +71,35 @@ class ConversationStorage:
                 existing_meta = session.metadata_json or {}
                 session.metadata_json = {**existing_meta, **metadata}
 
+            # save 采用「整段删后重插」，旧消息的 rag_trace / 附件元数据需要按下标继承，
+            # 否则每开新一轮都会把这些历史展示数据清空。
+            existing_rows = (
+                db.query(ChatMessage)
+                .filter(ChatMessage.session_ref_id == session.id)
+                .order_by(ChatMessage.id.asc())
+                .all()
+            )
+            carried_extras = [(row.rag_trace, row.attachments) for row in existing_rows]
+
             db.query(ChatMessage).filter(ChatMessage.session_ref_id == session.id).delete(synchronize_session=False)
 
             serialized = []
             now = datetime.utcnow()
             for idx, msg in enumerate(messages):
                 rag_trace = None
+                attachments = None
                 if extra_message_data and idx < len(extra_message_data):
                     extra = extra_message_data[idx] or {}
                     rag_trace = extra.get("rag_trace")
+                    attachments = extra.get("attachments") or None
+
+                carried_trace, carried_attachments = (
+                    carried_extras[idx] if idx < len(carried_extras) else (None, None)
+                )
+                if rag_trace is None:
+                    rag_trace = carried_trace
+                if attachments is None:
+                    attachments = carried_attachments
 
                 db.add(
                     ChatMessage(
@@ -88,6 +108,7 @@ class ConversationStorage:
                         content=str(msg.content),
                         timestamp=now,
                         rag_trace=rag_trace,
+                        attachments=attachments,
                     )
                 )
                 serialized.append(
@@ -96,6 +117,7 @@ class ConversationStorage:
                         "content": str(msg.content),
                         "timestamp": _isoformat_utc(now),
                         "rag_trace": rag_trace,
+                        "attachments": attachments,
                     }
                 )
 
@@ -203,6 +225,7 @@ class ConversationStorage:
                     "content": row.content,
                     "timestamp": _isoformat_utc(row.timestamp),
                     "rag_trace": row.rag_trace,
+                    "attachments": row.attachments,
                 }
                 for row in rows
             ]
@@ -274,6 +297,40 @@ class ConversationStorage:
                 db.delete(session)
             db.commit()
             for session_id in session_ids:
+                cache.delete(self._messages_cache_key(user_id, session_id))
+            cache.delete(self._sessions_cache_key(user_id))
+            return deleted_count
+        finally:
+            db.close()
+
+    def delete_sessions_batch(self, user_id: str, session_ids: list[str]) -> int:
+        """批量删除属于该用户的多个会话，仅删除确实存在的会话，返回实际删除数量。"""
+        if not session_ids:
+            return 0
+        # 去重，避免同一 id 重复传入导致误判。
+        unique_ids = list({sid for sid in session_ids if sid})
+        if not unique_ids:
+            return 0
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.username == user_id).first()
+            if not user:
+                return 0
+            sessions = (
+                db.query(ChatSession)
+                .filter(
+                    ChatSession.user_id == user.id,
+                    ChatSession.session_id.in_(unique_ids),
+                )
+                .all()
+            )
+            deleted_ids = [session.session_id for session in sessions]
+            deleted_count = len(sessions)
+            for session in sessions:
+                db.delete(session)
+            db.commit()
+            for session_id in deleted_ids:
                 cache.delete(self._messages_cache_key(user_id, session_id))
             cache.delete(self._sessions_cache_key(user_id))
             return deleted_count

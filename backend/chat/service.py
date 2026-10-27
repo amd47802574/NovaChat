@@ -5,6 +5,12 @@ from uuid import uuid4
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 
+from backend.chat.attachments import (
+    AttachmentContent,
+    build_attachment_content,
+    build_message_content,
+    build_rag_steps,
+)
 from backend.chat.request_context import ChatRequestContext
 from backend.chat.runtime import create_agent_for_request, fast_model, model
 from backend.chat.storage import storage
@@ -155,6 +161,41 @@ def _append_error_content(existing: str, error: str) -> str:
     return f"{existing}\n{error_text}"
 
 
+def humanize_provider_error(error: str) -> str:
+    """从 provider 的原始错误串里提取可读消息。
+
+    上游返回的往往是整段 SSE/JSON（如 data: {"error":{"message":"..."}}），
+    直接展示给用户既难读又像堆栈泄漏，这里优先取其中的 message 字段。
+    """
+    text = str(error or "").strip()
+    if not text:
+        return text
+    payload = text
+    marker = text.find("data: ")
+    if marker >= 0:
+        payload = text[marker + len("data: "):].strip()
+    start = payload.find("{")
+    end = payload.rfind("}")
+    if start < 0 or end <= start:
+        return text
+    try:
+        data = json.loads(payload[start:end + 1])
+    except Exception:
+        return text
+    if not isinstance(data, dict):
+        return text
+    err = data.get("error")
+    if isinstance(err, dict):
+        message = err.get("message") or err.get("msg")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+    for key in ("message", "detail", "msg"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return text
+
+
 def _format_retrieved_chunks(docs: list[dict]) -> str:
     formatted = []
     for i, result in enumerate(docs, 1):
@@ -226,6 +267,7 @@ def _build_context_messages(
     messages: list,
     persistent_note: str,
     user_text: str,
+    user_content: str | list | None = None,
 ) -> list:
     short_term = messages[-CONTEXT_WINDOW_MESSAGES:] if len(messages) > CONTEXT_WINDOW_MESSAGES else messages
     context_messages: list = []
@@ -240,8 +282,42 @@ def _build_context_messages(
             )
         )
     context_messages.extend(short_term)
-    context_messages.append(HumanMessage(content=user_text))
+    # 带附件时用户消息是多模态内容块列表；历史落库仍保留纯文本
+    context_messages.append(HumanMessage(content=user_content if user_content is not None else user_text))
     return context_messages
+
+
+def _prepare_attachments(attachments: list | None) -> list[AttachmentContent]:
+    """把数据库附件记录转换成模型侧内容，单条失败不影响其他附件。"""
+    return [build_attachment_content(item) for item in (attachments or [])]
+
+
+def _attachment_metas(contents: list[AttachmentContent]) -> list[dict]:
+    return [content.meta for content in contents]
+
+
+def _attachment_text_only(user_text: str, contents: list[AttachmentContent]) -> str:
+    """HITL 续跑走纯检索链路，只把文档文本拼进查询，图片无法参与该链路。"""
+    doc_contents = [item for item in contents if item.attachment.kind == "document"]
+    if not doc_contents:
+        return user_text
+    merged = build_message_content(user_text, doc_contents)
+    return merged if isinstance(merged, str) else user_text
+
+
+def _build_extra_message_data(
+    messages_len: int,
+    rag_trace: dict | None,
+    attachment_metas: list[dict],
+) -> list:
+    """组装按消息下标对齐的附加数据：用户消息存附件元数据，AI 消息存 RAG trace。"""
+    extra: list = [None] * messages_len
+    user_idx = messages_len - 2
+    if attachment_metas and user_idx >= 0:
+        extra[user_idx] = {"attachments": attachment_metas}
+    if rag_trace and messages_len:
+        extra[messages_len - 1] = {"rag_trace": rag_trace}
+    return extra
 
 
 async def update_persistent_note(
@@ -313,6 +389,7 @@ def chat_with_agent(
     user_text: str,
     user_id: str = "default_user",
     session_id: str = "default_session",
+    attachments: list | None = None,
 ):
     messages, metadata = storage.load_with_meta(user_id, session_id)
     persistent_note = metadata.get("persistent_note", "")
@@ -333,6 +410,8 @@ def chat_with_agent(
         if is_hitl_resume
         else user_text
     )
+    attachment_contents = _prepare_attachments(attachments)
+    attachment_metas = _attachment_metas(attachment_contents)
 
     ctx = ChatRequestContext.for_sync(user_id=user_id, session_id=session_id)
     ctx.reset_knowledge_tool_budget()
@@ -342,7 +421,8 @@ def chat_with_agent(
         storage.save(user_id, session_id, messages)
 
         if is_hitl_resume and resume_state:
-            rag_result = _resume_rag_from_hitl_sync(pending_hitl, user_text, ctx)
+            resume_answer_text = _attachment_text_only(user_text, attachment_contents)
+            rag_result = _resume_rag_from_hitl_sync(pending_hitl, resume_answer_text, ctx)
             rag_trace = rag_result.get("rag_trace") if isinstance(rag_result, dict) else None
             next_pending_hitl = None
             if _is_hitl_trace(rag_trace):
@@ -357,10 +437,21 @@ def chat_with_agent(
                     next_pending_hitl["options"],
                 )
             else:
-                response_content = _answer_resumed_rag_sync(pending_hitl, user_text, rag_result)
+                response_content = _answer_resumed_rag_sync(
+                    pending_hitl, _attachment_text_only(user_text, attachment_contents), rag_result
+                )
         else:
             request_agent = create_agent_for_request(ctx)
-            context_messages = _build_context_messages(messages[:-1], persistent_note, effective_user_text)
+            context_messages = _build_context_messages(
+                messages[:-1],
+                persistent_note,
+                effective_user_text,
+                user_content=(
+                    build_message_content(effective_user_text, attachment_contents)
+                    if attachment_contents
+                    else None
+                ),
+            )
             result = request_agent.invoke(
                 {"messages": context_messages},
                 config={"recursion_limit": 8},
@@ -409,13 +500,14 @@ def chat_with_agent(
             )
 
         messages.append(AIMessage(content=response_content))
-        extra_message_data = [None] * (len(messages) - 1) + [{"rag_trace": rag_trace}]
         storage.save(
             user_id,
             session_id,
             messages,
             metadata=save_meta,
-            extra_message_data=extra_message_data,
+            extra_message_data=_build_extra_message_data(
+                len(messages), rag_trace, attachment_metas
+            ),
         )
 
         return {
@@ -430,6 +522,7 @@ async def chat_with_agent_stream(
     user_text: str,
     user_id: str = "default_user",
     session_id: str = "default_session",
+    attachments: list | None = None,
 ):
     messages, metadata = storage.load_with_meta(user_id, session_id)
     persistent_note = metadata.get("persistent_note", "")
@@ -450,6 +543,8 @@ async def chat_with_agent_stream(
         if is_hitl_resume
         else user_text
     )
+    attachment_contents = _prepare_attachments(attachments)
+    attachment_metas = _attachment_metas(attachment_contents)
 
     output_queue = asyncio.Queue()
     ctx = ChatRequestContext.for_stream(
@@ -463,11 +558,16 @@ async def chat_with_agent_stream(
         messages.append(HumanMessage(content=user_text))
         storage.save(user_id, session_id, messages)
 
+        # 附件解析结果先推给前端「思考阶段」，让用户看到解析进度
+        for step in build_rag_steps(attachment_contents):
+            ctx.emit_rag_step(step["icon"], step["label"], step["detail"])
+
         if is_hitl_resume and resume_state:
             loop = asyncio.get_running_loop()
+            resume_answer_text = _attachment_text_only(user_text, attachment_contents)
             resume_future = loop.run_in_executor(
                 None,
-                lambda: _resume_rag_from_hitl_sync(pending_hitl, user_text, ctx),
+                lambda: _resume_rag_from_hitl_sync(pending_hitl, resume_answer_text, ctx),
             )
 
             while not resume_future.done():
@@ -505,7 +605,7 @@ async def chat_with_agent_stream(
             else:
                 answer_messages = _build_resume_answer_messages(
                     pending_hitl,
-                    user_text,
+                    resume_answer_text,
                     rag_result.get("docs") or [],
                 )
                 try:
@@ -530,13 +630,14 @@ async def chat_with_agent_stream(
                 save_meta[PENDING_HITL_KEY] = None
 
             messages.append(AIMessage(content=full_response))
-            extra_message_data = [None] * (len(messages) - 1) + [{"rag_trace": rag_trace}]
             storage.save(
                 user_id,
                 session_id,
                 messages,
                 metadata=save_meta,
-                extra_message_data=extra_message_data,
+                extra_message_data=_build_extra_message_data(
+                    len(messages), rag_trace, attachment_metas
+                ),
             )
             if rag_trace:
                 yield f"data: {json.dumps({'type': 'trace', 'rag_trace': rag_trace})}\n\n"
@@ -558,7 +659,16 @@ async def chat_with_agent_stream(
             return
 
         request_agent = create_agent_for_request(ctx)
-        context_messages = _build_context_messages(messages[:-1], persistent_note, effective_user_text)
+        context_messages = _build_context_messages(
+            messages[:-1],
+            persistent_note,
+            effective_user_text,
+            user_content=(
+                build_message_content(effective_user_text, attachment_contents)
+                if attachment_contents
+                else None
+            ),
+        )
 
         title_task = None
         if is_first_message:
@@ -632,8 +742,8 @@ async def chat_with_agent_stream(
                         full_response += content
                         await output_queue.put({"type": "content", "content": content})
             except Exception as e:
-                agent_error = str(e)
-                await output_queue.put({"type": "error", "content": str(e)})
+                agent_error = humanize_provider_error(str(e))
+                await output_queue.put({"type": "error", "content": agent_error})
             finally:
                 await output_queue.put(None)
 
@@ -692,13 +802,14 @@ async def chat_with_agent_stream(
             full_response = _append_error_content(full_response, agent_error)
 
         messages.append(AIMessage(content=full_response))
-        extra_message_data = [None] * (len(messages) - 1) + [{"rag_trace": rag_trace}]
         storage.save(
             user_id,
             session_id,
             messages,
             metadata=save_meta,
-            extra_message_data=extra_message_data,
+            extra_message_data=_build_extra_message_data(
+                len(messages), rag_trace, attachment_metas
+            ),
         )
         if rag_trace:
             yield f"data: {json.dumps({'type': 'trace', 'rag_trace': rag_trace})}\n\n"

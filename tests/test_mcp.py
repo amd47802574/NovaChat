@@ -14,6 +14,7 @@ NovaChat MCP 集成验证测试
 """
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import sys
@@ -48,6 +49,9 @@ def test_adapters_basic():
     assert isinstance(schema, dict), "schema 应为字典"
     assert schema.get("type") == "object" or "properties" in schema, \
         f"schema 应为对象类型,实际: {schema}"
+    assert str(inspect.signature(fn)) == "(expression: str) -> str"
+    assert fn is calculate.func, "StructuredTool 应直接暴露原始函数，避免嵌套 invoke"
+    assert fn(expression="1 + 2").endswith("= 3")
     console.print(f"  ✓ 工具名: {name}")
     console.print(f"  ✓ 输入 schema 键: {list(schema.keys())}")
 
@@ -80,12 +84,17 @@ def test_client_config_parsing(tmp_path: Path):
     cfg.write_text(json.dumps({
         "mcpServers": {
             "fs": {"command": "npx", "args": ["-y", "fs-server"]},
-            "calc": {"command": "python", "args": ["calc.py"]},
+            "calc": {"command": "python", "args": ["-m", "backend.tools.mcp.server"]},
         }
     }), encoding="utf-8")
     servers = load_mcp_config(cfg)
     assert set(servers.keys()) == {"fs", "calc"}, f"解析结果错误: {servers}"
     assert servers["fs"]["command"] == "npx"
+    assert servers["calc"]["command"] == sys.executable
+    assert servers["calc"]["cwd"] == str(PROJECT_ROOT)
+    assert servers["calc"]["encoding"] == "utf-8"
+    assert servers["calc"]["env"]["PYTHONUTF8"] == "1"
+    assert servers["calc"]["env"]["PYTHONIOENCODING"] == "utf-8"
     console.print(f"  ✓ 解析到 {len(servers)} 个 server: {list(servers.keys())}")
 
     # 2b: 缺少 command 字段的条目应被跳过

@@ -85,3 +85,17 @@ def init_db() -> None:
     import backend.db.models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_chat_message_columns()
+
+
+def _ensure_chat_message_columns() -> None:
+    """create_all 只建表不补列，对已存在的 chat_messages 做轻量自动迁移。"""
+    from sqlalchemy import text
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachments JSON")
+            )
+    except Exception as exc:
+        print(f"chat_messages.attachments 列迁移失败（可手动执行 ALTER TABLE 补齐）: {exc}")

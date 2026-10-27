@@ -81,6 +81,30 @@ export const useDocumentStore = defineStore('documents', {
       }
     },
 
+    // 上传任务完成后，向量库写入与列表查询之间可能存在短暂延迟，
+    // 这里轮询列表直到新文件可见，避免用户必须手动刷新页面。
+    async refreshDocumentsUntilVisible(filename: string, attempts = 6, intervalMs = 1000) {
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+          await this.loadDocuments();
+          if (!filename || this.documents.some((doc) => doc.filename === filename)) {
+            return;
+          }
+        } catch {
+          // 列表查询偶发失败时继续重试，避免整个刷新流程中断
+        }
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+      }
+      // 重试耗尽后兜底再拉一次，失败也交由调用方忽略
+      try {
+        await this.loadDocuments();
+      } catch {
+        // 忽略：保留当前列表
+      }
+    },
+
     async uploadDocument() {
       if (!this.selectedFile) {
         throw new Error('请先选择文件');
@@ -141,22 +165,30 @@ export const useDocumentStore = defineStore('documents', {
     startUploadJobPolling(jobId: string) {
       this.stopUploadJobPolling();
 
+      let consecutiveErrors = 0;
       const poll = async () => {
         try {
           const response = await api.get(`/documents/upload/jobs/${encodeURIComponent(jobId)}`);
           const job = response.data;
+          consecutiveErrors = 0;
           this.syncUploadJob(job);
 
           if (job.status === 'completed') {
             this.stopUploadJobPolling();
             this.isUploading = false;
             this.selectedFile = null;
-            await this.loadDocuments();
+            await this.refreshDocumentsUntilVisible(job.filename || '');
           } else if (job.status === 'failed') {
             this.stopUploadJobPolling();
             this.isUploading = false;
           }
         } catch (error: any) {
+          // 偶发的网络抖动或后端繁忙不应中断轮询，连续失败后才放弃
+          consecutiveErrors += 1;
+          if (consecutiveErrors < 3) {
+            this.uploadProgress = '进度查询重试中...';
+            return;
+          }
           this.uploadProgress = '进度查询失败：' + (error.response?.data?.detail || error.message);
           this.stopUploadJobPolling();
           this.isUploading = false;

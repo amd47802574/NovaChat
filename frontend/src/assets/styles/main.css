@@ -625,6 +625,29 @@ body {
     content: none;
 }
 
+/* 回答中的表格：显示所有框线，文字上下左右居中 */
+.message-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 0.92em;
+    border: 1px solid #d0d7de;
+}
+
+.message-content th,
+.message-content td {
+    border: 1px solid #d0d7de;
+    padding: 8px 12px;
+    text-align: center;
+    vertical-align: middle;
+    word-break: break-word;
+}
+
+.message-content th {
+    background-color: #f3f6fa;
+    font-weight: 600;
+}
+
 .hitl-panel {
     margin-bottom: 12px;
     padding: 12px 14px;
@@ -1181,14 +1204,28 @@ span.cite-ref:hover {
     align-items: center;
     gap: 15px;
     padding: 15px;
-    background-color: var(--bg-color);
+    background-color: var(--nova-surface-soft);
+    color: var(--nova-text);
     border-radius: 12px;
-    border: 2px dashed var(--primary-light);
+    border: 2px dashed var(--nova-primary);
+}
+
+.selected-file-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-weight: 600;
 }
 
 .selected-file i {
-    color: var(--primary-color);
+    color: var(--nova-primary);
     font-size: 1.5rem;
+}
+
+.selected-file .btn-primary {
+    flex: 0 0 auto;
 }
 
 .btn-primary {
@@ -2366,6 +2403,16 @@ select:focus-visible {
     max-width: min(82%, 860px);
 }
 
+/* 解除 AI 回答内容的宽度限制，必要时内容可横向滚动 */
+.message.bot-message {
+    max-width: 100%;
+}
+
+.message.bot-message .message-content {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
 .message-content {
     padding: 14px 17px;
     border-radius: 8px;
@@ -3227,6 +3274,147 @@ button {
     color: var(--nova-text-muted);
 }
 
+.attachment-status {
+    display: inline-flex;
+    align-items: center;
+    color: var(--nova-text-muted);
+    font-size: 0.72rem;
+}
+
+.attachment-status.failed {
+    color: #e05252;
+}
+
+.attachment-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, #e05252 35%, var(--nova-border));
+    border-radius: 12px;
+    background: color-mix(in srgb, #e05252 8%, var(--nova-surface));
+    color: var(--nova-text-secondary);
+    font-size: 0.76rem;
+    line-height: 1.5;
+}
+
+.attachment-error > i {
+    color: #e05252;
+}
+
+.attachment-error > span {
+    flex: 1;
+    min-width: 0;
+}
+
+.attachment-error button {
+    background: transparent;
+    color: var(--nova-text-muted);
+    padding: 2px 4px;
+}
+
+/* 消息气泡内的附件（历史消息与刚发送的消息共用） */
+.msg-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+    justify-content: flex-end;
+}
+
+.msg-attachment-thumb {
+    width: 104px;
+    height: 104px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--nova-border);
+    border-radius: 12px;
+    background: var(--nova-surface);
+    cursor: zoom-in;
+}
+
+.msg-attachment-thumb img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.thumb-loading,
+.thumb-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--nova-text-muted);
+    font-size: 0.95rem;
+}
+
+.msg-attachment-file {
+    max-width: 240px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border: 1px solid var(--nova-border);
+    border-radius: 12px;
+    background: var(--nova-surface);
+    color: var(--nova-text-secondary);
+    font-size: 0.76rem;
+    cursor: pointer;
+}
+
+.msg-attachment-file:hover {
+    border-color: color-mix(in srgb, var(--nova-primary) 45%, var(--nova-border));
+}
+
+.msg-attachment-file .file-name {
+    min-width: 0;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.msg-attachment-file .file-action {
+    opacity: 0.55;
+    font-size: 0.7rem;
+}
+
+.msg-attachment-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 32px;
+    background: rgba(9, 14, 24, 0.82);
+    cursor: zoom-out;
+}
+
+.msg-attachment-lightbox img {
+    max-width: min(92vw, 1080px);
+    max-height: 82vh;
+    border-radius: 14px;
+    object-fit: contain;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+.msg-attachment-lightbox .lightbox-caption {
+    max-width: 80vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.8rem;
+}
+
 .file-input {
     display: none;
 }
@@ -3646,6 +3834,132 @@ button {
 .history-footer .clear-history-btn {
     color: #d55760;
 }
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.batch-manage-btn,
+.batch-cancel-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 11px;
+    border: 1px solid var(--nova-border);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--nova-text-secondary);
+    font-size: 0.76rem;
+    cursor: pointer;
+    transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.batch-manage-btn:hover,
+.batch-cancel-btn:hover {
+    background: var(--nova-surface);
+    color: var(--nova-text);
+    border-color: var(--nova-primary);
+}
+
+.select-checkbox {
+    flex: 0 0 auto;
+    position: relative;
+    width: 21px;
+    height: 21px;
+    border: 1.5px solid var(--nova-border);
+    border-radius: 7px;
+    background: var(--nova-surface);
+    cursor: pointer;
+    transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.select-checkbox.checked {
+    background: var(--nova-primary);
+    border-color: var(--nova-primary);
+}
+
+.select-checkbox.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* 批量模式下使用原生字体图标对勾，避免伪元素与 :checked 状态叠加 */
+.select-checkbox.checked i {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-size: 0.7rem;
+}
+
+.history-swipe-row.select-mode {
+    cursor: default;
+}
+
+.history-item.selected {
+    border-color: color-mix(in srgb, var(--nova-primary) 35%, var(--nova-border));
+    background: color-mix(in srgb, var(--nova-primary) 13%, var(--nova-surface));
+}
+
+.batch-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--nova-border);
+    background: var(--nova-surface-soft);
+}
+
+.batch-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    border: 0;
+    background: transparent;
+    color: var(--nova-text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.batch-select-all .select-checkbox {
+    cursor: pointer;
+}
+
+.batch-count {
+    color: var(--nova-text-muted);
+    font-size: 0.74rem;
+}
+
+.batch-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 42px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 13px;
+    background: #df5b63;
+    color: #ffffff;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background-color 0.18s ease, opacity 0.18s ease;
+}
+
+.batch-delete-btn:hover:not(:disabled) {
+    background: #cf4650;
+}
+
+.batch-delete-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 
 .drawer-user {
     min-height: 46px;

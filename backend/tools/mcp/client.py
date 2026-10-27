@@ -24,6 +24,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 # 默认配置文件位置:项目根目录下的 mcp_config.json
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "mcp_config.json"
+PROJECT_ROOT = DEFAULT_CONFIG_PATH.parent
 
 # 是否启用 MCP 客户端(可通过环境变量 NOVACHAT_MCP_ENABLED=0 关闭)
 ENV_ENABLED_FLAG = "NOVACHAT_MCP_ENABLED"
@@ -39,6 +41,16 @@ ENV_ENABLED_FLAG = "NOVACHAT_MCP_ENABLED"
 def _is_enabled() -> bool:
     """是否启用 MCP 客户端加载。"""
     return os.getenv(ENV_ENABLED_FLAG, "1").lower() not in ("0", "false", "no", "off")
+
+
+def _expand_config_value(value: str) -> str:
+    """展开 MCP 配置中 NovaChat 支持的路径占位符。"""
+    expanded = (
+        value
+        .replace("${PYTHON}", sys.executable)
+        .replace("${PROJECT_ROOT}", str(PROJECT_ROOT))
+    )
+    return os.path.expandvars(expanded)
 
 
 def load_mcp_config(config_path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
@@ -75,12 +87,46 @@ def load_mcp_config(config_path: Optional[Path] = None) -> Dict[str, Dict[str, A
         if not command:
             logger.warning("MCP server `%s` 缺少 command 字段,已跳过", name)
             continue
-        cleaned[name] = {
+        args = cfg.get("args", [])
+        if not isinstance(args, list):
+            logger.warning("MCP server `%s` 的 args 必须是数组，已跳过", name)
+            continue
+
+        resolved_command = _expand_config_value(str(command))
+        resolved_args = [_expand_config_value(str(arg)) for arg in args]
+
+        # 本项目模块必须由当前后端解释器启动，避免误用系统 Python 导致依赖缺失。
+        is_local_server = resolved_args[:2] == ["-m", "backend.tools.mcp.server"]
+        if is_local_server and resolved_command.lower() in {"python", "python.exe", "python3"}:
+            resolved_command = sys.executable
+
+        configured_env = cfg.get("env")
+        if configured_env is not None and not isinstance(configured_env, dict):
+            logger.warning("MCP server `%s` 的 env 必须是对象，已跳过", name)
+            continue
+
+        connection: Dict[str, Any] = {
             "transport": cfg.get("transport", "stdio"),
-            "command": command,
-            "args": cfg.get("args", []),
-            "env": cfg.get("env"),
+            "command": resolved_command,
+            "args": resolved_args,
         }
+        if is_local_server:
+            # 本地工具进程需要继承 API Key 等项目环境，并强制使用 UTF-8 传输 MCP 消息。
+            child_env = dict(os.environ)
+            child_env.update({str(key): str(value) for key, value in (configured_env or {}).items()})
+            child_env["PYTHONUTF8"] = "1"
+            child_env["PYTHONIOENCODING"] = "utf-8"
+            connection["env"] = child_env
+            connection["encoding"] = "utf-8"
+        else:
+            connection["env"] = configured_env
+
+        cwd = cfg.get("cwd")
+        if cwd:
+            connection["cwd"] = _expand_config_value(str(cwd))
+        elif is_local_server:
+            connection["cwd"] = str(PROJECT_ROOT)
+        cleaned[name] = connection
     return cleaned
 
 
@@ -109,17 +155,25 @@ async def load_external_mcp_tools(
         logger.warning("未安装 langchain-mcp-adapters,跳过 MCP 工具加载: %s", exc)
         return []
 
-    # MultiServerMCPClient 期望的字典结构与我们 cleaned 的一致
-    try:
-        client = MultiServerMCPClient(servers)
-        tools = await client.get_tools()
-    except Exception as exc:
-        logger.warning("加载 MCP 工具失败(将跳过外部工具): %s", exc)
-        return []
+    tools: List[Any] = []
+    loaded_server_count = 0
+    for server_name, server_config in servers.items():
+        try:
+            client = MultiServerMCPClient({server_name: server_config})
+            server_tools = await client.get_tools(server_name=server_name)
+        except Exception as exc:
+            logger.warning("加载 MCP server `%s` 失败，已跳过: %s", server_name, exc)
+            continue
+        tools.extend(server_tools)
+        loaded_server_count += 1
 
-    logger.info("从 %d 个 MCP server 加载到 %d 个工具",
-                len(servers), len(tools))
-    return list(tools)
+    logger.info(
+        "从 %d/%d 个 MCP server 加载到 %d 个工具",
+        loaded_server_count,
+        len(servers),
+        len(tools),
+    )
+    return tools
 
 
 def load_external_mcp_tools_sync(

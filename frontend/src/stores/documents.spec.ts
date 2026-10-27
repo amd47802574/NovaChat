@@ -121,4 +121,76 @@ describe('document upload polling', () => {
       { filename: 'wuthering-waves.pdf', file_type: 'PDF', chunk_count: 770 },
     ]);
   });
+
+  it('retries the document list until the uploaded file becomes visible', async () => {
+    const store = useDocumentStore();
+    const completedJob = createUploadJob({
+      filename: 'new-doc.doc',
+      status: 'completed',
+      message: '成功上传并处理 new-doc.doc',
+    });
+
+    let documentsCalls = 0;
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/documents') {
+        documentsCalls += 1;
+        const documents = documentsCalls === 1
+          ? [{ filename: 'existing.pdf', file_type: 'PDF', chunk_count: 3 }]
+          : [
+              { filename: 'existing.pdf', file_type: 'PDF', chunk_count: 3 },
+              { filename: 'new-doc.doc', file_type: 'Word', chunk_count: 8 },
+            ];
+        return Promise.resolve({ data: { documents } });
+      }
+      if (url === '/documents/upload/jobs/job_upload_1') {
+        return Promise.resolve({ data: completedJob });
+      }
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    store.startUploadJobPolling('job_upload_1');
+    for (let i = 0; i < 6; i += 1) {
+      await flushPromises();
+    }
+
+    // 第一次列表查询还没读到刚入库的文档，此时不应放弃刷新
+    expect(store.documents.map((doc) => doc.filename)).toEqual(['existing.pdf']);
+    expect(store.isUploading).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushPromises();
+
+    expect(store.documents.map((doc) => doc.filename)).toContain('new-doc.doc');
+  });
+
+  it('keeps polling across a transient status query failure', async () => {
+    const store = useDocumentStore();
+    const completedJob = createUploadJob({ status: 'completed', message: '文档处理完成' });
+    let jobCalls = 0;
+
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/documents') {
+        return Promise.resolve({ data: { documents: [] } });
+      }
+      if (url === '/documents/upload/jobs/job_upload_1') {
+        jobCalls += 1;
+        if (jobCalls === 1) {
+          return Promise.reject(new Error('network hiccup'));
+        }
+        return Promise.resolve({ data: completedJob });
+      }
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    store.startUploadJobPolling('job_upload_1');
+    await flushPromises();
+
+    expect(store.uploadPollTimer).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushPromises();
+
+    expect(store.uploadPollTimer).toBeNull();
+    expect(store.isUploading).toBe(false);
+  });
 });

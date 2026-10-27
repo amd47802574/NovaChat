@@ -5,6 +5,8 @@ from backend.db.models import User
 from backend.infra.auth import get_current_user
 from backend.schemas import (
     MessageInfo,
+    SessionBatchDeleteRequest,
+    SessionBatchDeleteResponse,
     SessionClearResponse,
     SessionDeleteResponse,
     SessionInfo,
@@ -26,6 +28,7 @@ async def get_session_messages(session_id: str, current_user: User = Depends(get
                 content=msg["content"],
                 timestamp=msg["timestamp"],
                 rag_trace=msg.get("rag_trace"),
+                attachments=msg.get("attachments") or None,
             )
             for msg in storage.get_session_messages(current_user.username, session_id)
         ]
@@ -77,6 +80,26 @@ async def clear_sessions(current_user: User = Depends(get_current_user)):
     try:
         deleted_count = storage.clear_sessions(current_user.username)
         return SessionClearResponse(deleted_count=deleted_count, message="历史会话已清空")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/sessions/batch", response_model=SessionBatchDeleteResponse)
+async def batch_delete_sessions(
+    payload: SessionBatchDeleteRequest,
+    current_user: User = Depends(get_current_user),
+):
+    # 该路由必须注册在 ``/sessions/{session_id}`` 之前，否则 "batch" 会被当成 session_id 命中单条删除。
+    if not payload.session_ids:
+        raise HTTPException(status_code=400, detail="未提供要删除的会话")
+    try:
+        deleted_count = storage.delete_sessions_batch(current_user.username, payload.session_ids)
+        return SessionBatchDeleteResponse(
+            deleted_count=deleted_count,
+            message=f"成功删除 {deleted_count} 个会话",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

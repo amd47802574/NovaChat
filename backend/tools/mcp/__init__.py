@@ -12,7 +12,7 @@ from backend.tools.mcp.client import (
     load_external_mcp_tools_sync,
     load_mcp_config,
 )
-from backend.tools.mcp.server import SERVER_NAME, _create_mcp_server
+SERVER_NAME = "NovaChat-Tools"
 
 __all__ = [
     "SERVER_NAME",
@@ -26,6 +26,8 @@ __all__ = [
 
 def create_mcp_server():
     """创建并返回配置好的 FastMCP 实例。"""
+    from backend.tools.mcp.server import _create_mcp_server
+
     return _create_mcp_server()
 
 

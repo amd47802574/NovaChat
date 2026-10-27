@@ -176,9 +176,11 @@ class MilvusStore:
         output_fields: list[str] | None = None,
         limit: int = 10000,
         offset: int = 0,
+        consistency_level: str | None = None,
     ):
         expr = _normalize_filter(filter_expr)
         fields = output_fields or ["filename", "file_type"]
+        extra = {"consistency_level": consistency_level} if consistency_level else {}
 
         def _query(client: MilvusClient):
             return client.query(
@@ -187,6 +189,7 @@ class MilvusStore:
                 output_fields=fields,
                 limit=min(limit, QUERY_MAX_LIMIT),
                 offset=offset,
+                **extra,
             )
 
         return self._run(_query)

@@ -13,7 +13,6 @@
 """
 from __future__ import annotations
 
-import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:
@@ -61,7 +60,7 @@ def langchain_tool_to_mcp_callable(tool: BaseTool) -> Tuple[str, Callable, Dict[
     """把单个 LangChain 工具转换为 (name, callable, input_schema) 三元组。
 
     返回的 callable 保持同步签名(FastMCP 同时支持同步与异步工具)。
-    callable 内部会调用 `tool._run(**kwargs)`,与原 LangChain 工具行为一致。
+    StructuredTool 会直接暴露原始 func/coroutine，避免在 MCP 执行器中嵌套 LangChain 运行时。
 
     Args:
         tool: 已实例化的 LangChain BaseTool 对象。
@@ -76,11 +75,13 @@ def langchain_tool_to_mcp_callable(tool: BaseTool) -> Tuple[str, Callable, Dict[
     description = tool.description or f"MCP-exposed tool: {name}"
     input_schema = _pydantic_schema_to_json(getattr(tool, "args_schema", None))
 
-    def _mcp_callable(**kwargs: Any) -> str:
-        # LangChain 工具的同步入口
-        return tool._run(kwargs)
+    source_callable = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
+    if source_callable is not None:
+        return name, source_callable, input_schema
 
-    # 让 FastMCP 看到一个有可读签名的函数(便于调试)
+    def _mcp_callable(**kwargs: Any) -> Any:
+        return tool.invoke(kwargs)
+
     _mcp_callable.__name__ = name
     _mcp_callable.__doc__ = description
     return name, _mcp_callable, input_schema

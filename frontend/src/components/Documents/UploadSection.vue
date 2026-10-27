@@ -14,7 +14,10 @@
       </button>
       
       <div v-if="documentStore.selectedFile" class="selected-file">
-        <i class="fas fa-file"></i> {{ documentStore.selectedFile.name }}
+        <i class="fas fa-file"></i>
+        <span class="selected-file-name" :title="documentStore.selectedFile.name">
+          {{ documentStore.selectedFile.name }}
+        </span>
         <button @click="onUpload" class="btn-primary" :disabled="documentStore.isUploading">
           <i class="fas fa-upload"></i> {{ documentStore.isUploading ? '上传中...' : '开始上传' }}
         </button>

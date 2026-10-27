@@ -5,10 +5,13 @@
 - serper：使用 Serper API，需要 SERPER_API_KEY
 - duckduckgo：使用 DuckDuckGo Instant Answer API，免费但结果有限
 """
+import logging
 import os
 from typing import List
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 try:
     from langchain_core.tools import tool
@@ -62,9 +65,11 @@ def search_firecrawl(query: str, num_results: int = DEFAULT_RESULTS) -> List[dic
     }
 
     try:
+        logger.info("开始调用 Firecrawl 搜索接口，结果数=%d", num_results)
         resp = requests.post(
             FIRECRAWL_API_URL, json=payload, headers=headers, timeout=30
         )
+        logger.info("Firecrawl 搜索接口返回，状态码=%d", resp.status_code)
         resp.raise_for_status()
         data = resp.json()
     except requests.exceptions.Timeout:
@@ -96,6 +101,7 @@ def search_firecrawl(query: str, num_results: int = DEFAULT_RESULTS) -> List[dic
                 "snippet": item.get("description", "") or "",
             }
         )
+    logger.info("Firecrawl 搜索结果解析完成，结果数=%d", len(results))
     return results
 
 

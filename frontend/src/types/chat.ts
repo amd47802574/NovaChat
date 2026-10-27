@@ -100,6 +100,13 @@ export interface ToolCallEntry {
   started_at?: string;
 }
 
+export interface MessageAttachment {
+  id: string;
+  filename: string;
+  kind: 'image' | 'document' | string;
+  mime?: string | null;
+}
+
 export interface Message {
   text: string;
   isUser: boolean;
@@ -113,6 +120,7 @@ export interface Message {
   ragSteps?: RagStep[];
   _groupedSteps?: GroupedRagStep[];
   toolCalls?: ToolCallEntry[];
+  attachments?: MessageAttachment[];
 }
 
 export interface ChatSession {

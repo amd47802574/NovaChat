@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { useAuthStore } from './auth';
 import { useSessionStore } from './sessions';
 import api from '@/utils/api';
-import type { Message, RagStep, GroupedRagStep, HitlRequest, RagTrace } from '@/types/chat';
+import type { Message, RagStep, GroupedRagStep, HitlRequest, RagTrace, MessageAttachment } from '@/types/chat';
 
 const LAST_SESSION_ID_STORAGE_KEY = 'novaLastSessionId';
 const SESSION_ID_URL_PARAM = 'session_id';
@@ -108,7 +108,7 @@ export const useChatStore = defineStore('chat', {
       if (pendingHitl) {
         return '输入自定义补充，或选择上方选项后发送...';
       }
-      return '向星智问答提问...（Shift+Enter 换行）';
+      return '向星智问答提问...';
     },
   },
 
@@ -247,6 +247,14 @@ export const useChatStore = defineStore('chat', {
           hitlResumeText: resumeTextForMessage,
           ragTrace,
           toolCalls: [],
+          attachments: Array.isArray(msg.attachments) && msg.attachments.length
+            ? msg.attachments.map((item: any) => ({
+              id: String(item.id || ''),
+              filename: String(item.filename || '附件'),
+              kind: String(item.kind || 'document'),
+              mime: item.mime || null,
+            })).filter((item: MessageAttachment) => item.id)
+            : undefined,
         };
       });
     },
@@ -420,21 +428,24 @@ export const useChatStore = defineStore('chat', {
       }
     },
 
-    async handleSend() {
+    async handleSend(options?: { attachments?: MessageAttachment[] }): Promise<boolean> {
       const authStore = useAuthStore();
       const sessionStore = useSessionStore();
 
       if (!authStore.isAuthenticated) {
         alert('请先登录');
-        return;
+        return false;
       }
 
       const text = this.userInput.trim();
-      if (!text) return;
+      const attachments = (options?.attachments || []).filter((item) => item?.id);
+      if (!text && !attachments.length) return false;
       if (this.isLoading) {
         alert('当前已有回答正在生成，请先等待完成或回到该会话终止回答');
-        return;
+        return false;
       }
+      // 纯附件消息给一个占位文本，保证会话标题、气泡与后端记录都有可读内容
+      const displayText = text || (attachments.length ? '请分析这些附件' : '');
 
       const requestSessionId = this.sessionId;
       const requestMessages = this.ensureSessionMessages(requestSessionId);
@@ -444,9 +455,10 @@ export const useChatStore = defineStore('chat', {
       }
 
       requestMessages.push({
-        text: text,
+        text: displayText,
         isUser: true,
         isHitlAnswer: !!pendingHitlAtSend,
+        attachments: attachments.length ? attachments : undefined,
       });
       if (pendingHitlAtSend) {
         delete this.pendingHitlBySession[requestSessionId];
@@ -510,8 +522,9 @@ export const useChatStore = defineStore('chat', {
             Authorization: `Bearer ${authStore.token}`,
           },
           body: JSON.stringify({
-            message: text,
+            message: displayText,
             session_id: requestSessionId,
+            attachments: attachments.length ? attachments.map((item) => ({ id: item.id })) : undefined,
           }),
           signal: this.abortController.signal,
         });
@@ -521,7 +534,15 @@ export const useChatStore = defineStore('chat', {
             authStore.handleLogout();
             throw new Error('登录已过期，请重新登录');
           }
-          throw new Error(`HTTP ${response.status}`);
+          // 附件校验失败（400/413）等错误由后端返回可读 detail，优先透出给用户
+          let detail = '';
+          try {
+            const errData = await response.json();
+            detail = typeof errData?.detail === 'string' ? errData.detail : '';
+          } catch (_) {
+            detail = '';
+          }
+          throw new Error(detail || `HTTP ${response.status}`);
         }
 
         const reader = response.body?.getReader();
@@ -632,7 +653,7 @@ export const useChatStore = defineStore('chat', {
       } catch (error: any) {
         streamHadError = true;
         const botMsg = requestMessages[botMsgIdx];
-        if (!botMsg) return;
+        if (!botMsg) return true;
         if (wasPageHiddenDuringRequest && this.isTransientNetworkError(error)) {
           botMsg.isThinking = false;
           if (!botMsg.text.trim()) {
@@ -673,6 +694,7 @@ export const useChatStore = defineStore('chat', {
         this.abortController = null;
         this.mergeCachedSessionsIntoHistory();
       }
+      return true;
     },
   },
 });

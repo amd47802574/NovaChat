@@ -10,6 +10,7 @@ from langchain_community.document_loaders import (
     TextLoader,
     UnstructuredExcelLoader,
 )
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # 编译非打印 C0/C1 控制字符的正则（保留常规排版字：\t, \n, \r）
@@ -203,9 +204,21 @@ class DocumentLoader:
         if file_lower.endswith(".pdf"):
             doc_type = "PDF"
             loader = PyPDFLoader(file_path)
-        elif file_lower.endswith((".docx", ".doc")):
+        elif file_lower.endswith(".docx"):
             doc_type = "Word"
             loader = Docx2txtLoader(file_path)
+        elif file_lower.endswith(".doc"):
+            doc_type = "Word"
+            # 旧版 .doc 是 OLE2 二进制格式，docx2txt 无法解析，走专用降级提取链
+            from backend.indexing.legacy_doc import extract_legacy_doc_text
+
+            raw_docs = [
+                Document(
+                    page_content=extract_legacy_doc_text(file_path),
+                    metadata={"page": 0, "source": filename},
+                )
+            ]
+            return self._load_from_langchain_docs(raw_docs, file_path, filename, doc_type)
         elif file_lower.endswith((".xlsx", ".xls")):
             doc_type = "Excel"
             loader = UnstructuredExcelLoader(file_path)
