@@ -16,9 +16,10 @@ from rich.table import Table
 from backend.tools.documents import list_documents
 from backend.tools.datetime_tool import get_current_time
 from backend.tools.calculator import calculate
-from backend.tools.session_analyzer import analyze_conversation_history
+from backend.tools.session_analyzer import make_analyze_conversation_history
 from backend.tools.web_search import web_search
 from backend.tools.text_analyzer import analyze_text
+from backend.chat.request_context import ChatRequestContext
 
 console = Console()
 
@@ -83,8 +84,12 @@ def main():
     
     # Test 4: Session Analyzer Tool
     console.print("\n[yellow]测试 4/6: 会话历史统计工具[/yellow]")
-    success = test_tool("analyze_conversation_history", analyze_conversation_history, 
-                       session_id=None, limit=10, analysis_type="summary")
+    # 该工具已改为「绑定当前会话作用域」的工厂,需要传入每请求上下文。
+    analyze_tool = make_analyze_conversation_history(
+        ChatRequestContext.for_sync(user_id="test_user", session_id="test-session")
+    )
+    success = test_tool("analyze_conversation_history", analyze_tool,
+                       analysis_type="summary", limit=10)
     test_results.append(("会话历史统计", success))
     
     # Test 5: Web Search Tool

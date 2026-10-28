@@ -12,7 +12,8 @@ from backend.chat.attachments import (
     build_rag_steps,
 )
 from backend.chat.request_context import ChatRequestContext
-from backend.chat.runtime import create_agent_for_request, fast_model, model
+from backend.chat import runtime as chat_runtime
+from backend.chat.runtime import create_agent_for_request
 from backend.chat.storage import storage
 
 CONTEXT_WINDOW_MESSAGES = 6
@@ -259,7 +260,7 @@ def _answer_resumed_rag_sync(pending_hitl: dict, user_answer: str, rag_result: d
     route = rag_result.get("route") or trace.get("grade_route")
     if status == "no_knowledge" or route == "no_knowledge" or not docs:
         return _no_knowledge_response()
-    res = model.invoke(_build_resume_answer_messages(pending_hitl, user_answer, docs))
+    res = chat_runtime.model.invoke(_build_resume_answer_messages(pending_hitl, user_answer, docs))
     return _extract_ai_content(res)
 
 
@@ -338,7 +339,7 @@ def _generate_session_title_sync(user_text: str) -> str:
             "请根据用户的首次提问，生成一个简短的对话标题（控制在 10 个字以内，不要标点）。\n"
             f"用户提问：{user_text}"
         )
-        res = fast_model.invoke([HumanMessage(content=prompt)])
+        res = chat_runtime.fast_model.invoke([HumanMessage(content=prompt)])
         title = (res.content or "").strip().strip('"').strip("。")
         return title or "新会话"
     except Exception as e:
@@ -378,7 +379,7 @@ def _update_persistent_note_sync(current_note: str, user_text: str, ai_response:
             f"▼ 最新一轮对话：\n用户：{user_text}\nAI：{ai_response}\n\n"
             "请直接输出更新后的笔记（纯文本，不要解释或 Markdown 代码块）："
         )
-        res = fast_model.invoke([HumanMessage(content=prompt)])
+        res = chat_runtime.fast_model.invoke([HumanMessage(content=prompt)])
         return (res.content or "").strip()
     except Exception as e:
         print(f"Context Manager Error: {e}")
@@ -609,7 +610,7 @@ async def chat_with_agent_stream(
                     rag_result.get("docs") or [],
                 )
                 try:
-                    async for msg in model.astream(answer_messages):
+                    async for msg in chat_runtime.model.astream(answer_messages):
                         content = _extract_ai_content(msg)
                         if content:
                             full_response += content

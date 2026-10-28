@@ -353,7 +353,9 @@ NovaChat 在 `backend/tools/mcp/` 下提供 **MCP(Model Context Protocol)** 双�
 
 ### 服务端:把本地工具暴露为 MCP Server
 
-7 个纯函数工具(`get_current_weather` / `list_documents` / `get_current_time` / `calculate` / `analyze_conversation_history` / `web_search` / `analyze_text`)会被注册到一个 stdio MCP Server,可供 Claude Desktop、Cursor 或任意 MCP 客户端调用。
+7 个纯函数工具(`get_current_weather` / `list_documents` / `get_current_time` / `calculate` / `web_search` / `analyze_text`)会被注册到一个 stdio MCP Server,可供 Claude Desktop、Cursor 或任意 MCP 客户端调用。
+
+> 注:截至本文档,实际注册为 6 个。原因见下。
 
 ```bash
 # 启动本地 MCP Server (stdio)
@@ -361,6 +363,8 @@ python -m backend.tools.mcp.server
 ```
 
 > `search_knowledge_base` 依赖每请求的 `ChatRequestContext`,不在此处暴露(子进程无法访问主进程上下文)。
+>
+> `analyze_conversation_history`(会话历史分析)同样依赖每请求的 `ChatRequestContext`:其分析范围**严格限定在当前会话内**,以 `session_id` 为唯一作用域,禁止跨会话检索或关联其他会话数据,因此也不在此处暴露。
 >
 > Agent 会优先使用 MCP Server 提供的同名工具，同时保留本地实现作为降级路径；MCP 子进程启动失败时，天气、时间、搜索和计算等能力仍可继续使用。
 

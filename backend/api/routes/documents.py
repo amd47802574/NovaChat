@@ -2,17 +2,6 @@ import os
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 
-from backend.api.resources import (
-    UPLOAD_DIR,
-    ensure_upload_dir,
-    is_supported_document,
-    loader,
-    milvus_manager,
-    milvus_writer,
-    parent_chunk_store,
-    delete_document_transactionally,
-    save_upload_file,
-)
 from backend.db.models import User
 from backend.infra.auth import require_admin
 from backend.jobs import DELETE_STEPS, delete_job_manager, upload_job_manager
@@ -31,6 +20,14 @@ router = APIRouter(tags=["documents"])
 
 
 def _process_upload_job(job_id: str, file_path: str, filename: str) -> None:
+    from backend.api.resources import (
+        delete_document_transactionally,
+        loader,
+        milvus_manager,
+        milvus_writer,
+        parent_chunk_store,
+    )
+
     failed_step = "cleanup"
     try:
         upload_job_manager.complete_step(job_id, "upload", "文件已保存到服务器")
@@ -93,6 +90,8 @@ def _process_upload_job(job_id: str, file_path: str, filename: str) -> None:
 
 
 def _process_delete_job(job_id: str, filename: str) -> None:
+    from backend.api.resources import delete_document_transactionally
+
     failed_step = "prepare"
     try:
         chunks_deleted = delete_document_transactionally(filename, delete_job_manager, job_id)
@@ -105,6 +104,8 @@ def _process_delete_job(job_id: str, filename: str) -> None:
 
 @router.get("/documents", response_model=DocumentListResponse)
 async def list_documents(_: User = Depends(require_admin)):
+    from backend.api.resources import milvus_manager
+
     try:
         milvus_manager.init_collection()
         results = milvus_manager.query(
@@ -139,6 +140,13 @@ async def upload_document_async(
     file: UploadFile = File(...),
     _: User = Depends(require_admin),
 ):
+    from backend.api.resources import (
+        UPLOAD_DIR,
+        ensure_upload_dir,
+        is_supported_document,
+        save_upload_file,
+    )
+
     filename = file.filename or ""
     if not filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
@@ -180,28 +188,6 @@ async def list_upload_jobs(_: User = Depends(require_admin)):
     return [DocumentUploadJobResponse(**job) for job in jobs]
 
 
-@router.delete("/documents/delete/async/{filename}", response_model=DocumentDeleteStartResponse)
-async def delete_document_async(
-    filename: str,
-    background_tasks: BackgroundTasks,
-    _: User = Depends(require_admin),
-):
-    job = delete_job_manager.create_job(
-        filename,
-        steps=DELETE_STEPS,
-        current_step="prepare",
-        message="等待删除",
-        completion_step="parent_store",
-    )
-    delete_job_manager.update_step(job["job_id"], "prepare", 1, "running", "删除任务已提交")
-    background_tasks.add_task(_process_delete_job, job["job_id"], filename)
-    return DocumentDeleteStartResponse(
-        job_id=job["job_id"],
-        filename=filename,
-        message=f"正在删除 {filename}",
-    )
-
-
 @router.get("/documents/delete/jobs/{job_id}", response_model=DocumentDeleteJobResponse)
 async def get_delete_job(job_id: str, _: User = Depends(require_admin)):
     job = delete_job_manager.get_job(job_id)
@@ -212,6 +198,16 @@ async def get_delete_job(job_id: str, _: User = Depends(require_admin)):
 
 @router.post("/documents/upload", response_model=DocumentUploadResponse)
 async def upload_document(file: UploadFile = File(...), _: User = Depends(require_admin)):
+    from backend.api.resources import (
+        UPLOAD_DIR,
+        delete_document_transactionally,
+        ensure_upload_dir,
+        is_supported_document,
+        loader,
+        milvus_writer,
+        parent_chunk_store,
+    )
+
     try:
         filename = file.filename or ""
         if not filename:
@@ -220,7 +216,7 @@ async def upload_document(file: UploadFile = File(...), _: User = Depends(requir
             raise HTTPException(status_code=400, detail="仅支持 PDF、Word 和 Excel 文档")
 
         ensure_upload_dir()
-        
+
         # Cleanup existing同名文档以保证一致性
         delete_document_transactionally(filename)
 
@@ -261,6 +257,8 @@ async def upload_document(file: UploadFile = File(...), _: User = Depends(requir
 
 @router.delete("/documents/{filename}", response_model=DocumentDeleteResponse)
 async def delete_document(filename: str, _: User = Depends(require_admin)):
+    from backend.api.resources import delete_document_transactionally
+
     try:
         chunks_deleted = delete_document_transactionally(filename)
 

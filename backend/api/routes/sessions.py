@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.chat.storage import storage
 from backend.db.models import User
-from backend.infra.auth import get_current_user
+from backend.infra.auth import get_current_user, require_conversation_access
 from backend.schemas import (
     MessageInfo,
     SessionBatchDeleteRequest,
@@ -16,7 +16,10 @@ from backend.schemas import (
     SessionUpdateResponse,
 )
 
-router = APIRouter(tags=["sessions"])
+# 会话（历史）相关接口同样属于「对话功能」，统一拒绝超级管理员。
+router = APIRouter(
+    tags=["sessions"], dependencies=[Depends(require_conversation_access)]
+)
 
 
 @router.get("/sessions/{session_id}", response_model=SessionMessagesResponse)

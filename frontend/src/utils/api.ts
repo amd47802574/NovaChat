@@ -24,7 +24,15 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response && error.response.status === 401) {
+    const requestUrl: string = error.config?.url || '';
+    // /auth/* 接口的 401 属于业务失败（如账号密码错误），
+    // 由表单内联提示处理，不触发全局“登录过期”逻辑。
+    const isAuthRequest = requestUrl.startsWith('/auth/');
+    if (
+      error.response &&
+      error.response.status === 401 &&
+      !isAuthRequest
+    ) {
       localStorage.removeItem('accessToken');
       // 通知应用清理登录状态
       window.dispatchEvent(new CustomEvent('unauthorized'));

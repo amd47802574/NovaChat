@@ -5,12 +5,12 @@ from langchain.chat_models import init_chat_model
 
 from backend.chat.request_context import ChatRequestContext
 from backend.tools import (
-    analyze_conversation_history,
     analyze_text,
     calculate,
     get_current_time,
     get_current_weather,
     list_documents,
+    make_analyze_conversation_history,
     make_search_knowledge_base,
     web_search,
 )
@@ -96,7 +96,7 @@ def create_agent_for_request(ctx: ChatRequestContext):
         list_documents,
         get_current_time,
         calculate,
-        analyze_conversation_history,
+        make_analyze_conversation_history(ctx),
         web_search,
         analyze_text,
     ]

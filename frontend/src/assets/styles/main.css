@@ -2208,7 +2208,7 @@ select:focus-visible {
     display: block;
 }
 
-.auth-field > span {
+.auth-field-label {
     display: block;
     margin-bottom: 7px;
     color: #40526a;
@@ -2245,10 +2245,13 @@ select:focus-visible {
     box-shadow: 0 0 0 3px rgba(38, 153, 255, 0.1);
 }
 
-.auth-submit {
+.send-btn.auth-submit {
+    display: flex;
     width: 100% !important;
     height: 48px !important;
+    align-items: center;
     justify-content: space-between;
+    gap: 10px;
     margin-top: 5px;
     padding: 0 18px;
     border-radius: 6px !important;
@@ -2256,15 +2259,188 @@ select:focus-visible {
     box-shadow: 0 10px 24px rgba(14, 118, 216, 0.24);
 }
 
-.auth-submit:hover {
+.send-btn.auth-submit > span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.auth-submit:hover:not(:disabled) {
     background: linear-gradient(90deg, #0b69c2, #128de8);
-    transform: translateY(-1px);
+}
+
+.auth-submit:focus-visible {
+    outline: 2px solid #0e76d8;
+    outline-offset: 3px;
+}
+
+.auth-spinner {
+    animation: auth-spin 0.9s linear infinite;
+}
+
+@keyframes auth-spin {
+    to { transform: rotate(360deg); }
 }
 
 .auth-switch {
     color: #187fcf;
     font-size: 0.8rem;
     font-weight: 600;
+}
+
+.auth-switch:focus-visible,
+.auth-forgot:focus-visible,
+.auth-toggle-password:focus-visible,
+.icp-link:focus-visible,
+.auth-github-link:focus-visible {
+    outline: 2px solid #2699ff;
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* ---- 表单行（标签 + 找回密码入口） ---- */
+.auth-field-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 7px;
+}
+
+.auth-field-row .auth-field-label {
+    margin-bottom: 0;
+}
+
+.auth-forgot {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #187fcf;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.18s ease;
+}
+
+.auth-forgot:hover {
+    color: #0b69c2;
+    text-decoration: underline;
+}
+
+/* ---- 字段级校验反馈 ---- */
+.auth-field-error {
+    margin: 6px 2px 0;
+    color: #d64550;
+    font-size: 0.72rem;
+    line-height: 1.4;
+}
+
+.auth-input-invalid input,
+.auth-input-invalid select {
+    border-color: #d64550 !important;
+    background: #fff7f8;
+}
+
+.auth-input-invalid input:focus,
+.auth-input-invalid select:focus {
+    box-shadow: 0 0 0 3px rgba(214, 69, 80, 0.12) !important;
+}
+
+/* ---- 接口级错误 / 提示横幅 ---- */
+.auth-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-bottom: 16px;
+    padding: 11px 13px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    animation: auth-shake 0.36s ease;
+}
+
+.auth-alert i {
+    margin-top: 2px;
+    font-size: 0.9rem;
+}
+
+.auth-alert-error {
+    border: 1px solid rgba(214, 69, 80, 0.35);
+    background: #fdf1f2;
+    color: #b2323d;
+}
+
+.auth-alert-info {
+    border: 1px solid rgba(38, 153, 255, 0.3);
+    background: #f0f7ff;
+    color: #14609f;
+}
+
+/* 注册页角色说明常驻提示：复用信息横幅样式，但不触发抖动动画 */
+.auth-role-hint {
+    animation: none;
+    margin-top: -4px;
+}
+
+@keyframes auth-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+}
+
+/* ---- 密码可见性切换 ---- */
+.auth-toggle-password {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: #8ca1b8;
+    font-size: 0.84rem;
+    cursor: pointer;
+    transform: translateY(-50%);
+    transition: color 0.18s ease, background 0.18s ease;
+}
+
+.auth-toggle-password:hover {
+    background: rgba(38, 153, 255, 0.08);
+    color: #2699ff;
+}
+
+.auth-form .auth-input-wrap input[type='password'],
+.auth-form .auth-input-wrap input[type='text'] {
+    padding-right: 46px;
+}
+
+.auth-form .auth-input-wrap input::placeholder {
+    color: #a3b3c6;
+}
+
+/* ---- 动效降级（减弱动画偏好） ---- */
+@media (prefers-reduced-motion: reduce) {
+    .auth-alert {
+        animation: none;
+    }
+
+    .orbit-ring-one,
+    .orbit-ring-two,
+    .auth-spinner {
+        animation-duration: 60s;
+    }
+
+    .auth-github-link,
+    .auth-submit {
+        transition: none;
+    }
 }
 
 .chat-header {
@@ -2770,6 +2946,48 @@ textarea {
     --nova-button-gradient: linear-gradient(135deg, #70b3ff 0%, #638ff2 100%);
     --nova-overlay: rgba(17, 24, 39, 0.38);
     --nova-shadow: 0 14px 40px rgba(31, 41, 55, 0.08);
+
+    /* ===== 底部对话框（输入区）设计令牌 =====
+       配色方案：主色 = --nova-primary / 辅助色 = --nova-surface-soft
+       文字色 = --nova-text / 占位符 = --nova-text-muted
+       边框色 = --nova-border / 悬停边框 = 主色混合 / 聚焦描边 = 主色 + 光环
+       禁用态使用 --nova-surface-soft 背景 + --nova-text-muted 文字 */
+    --input-bg: var(--nova-surface);
+    --input-border: var(--nova-border);
+    --input-border-hover: color-mix(in srgb, var(--nova-primary) 38%, var(--nova-border));
+    --input-border-focus: var(--nova-primary);
+    --input-ring-focus: color-mix(in srgb, var(--nova-primary) 16%, transparent);
+    --input-text: var(--nova-text);
+    --input-placeholder: var(--nova-text-muted);
+    --input-radius: 20px;
+    --input-padding: 6px;
+    --input-gap: 6px;
+    --input-font-size: 0.92rem;
+    --input-line-height: 1.55;
+    --input-min-height: 54px;
+    --input-shadow: 0 6px 22px rgba(31, 41, 55, 0.05);
+    --input-shadow-focus: 0 8px 26px rgba(31, 41, 55, 0.08);
+
+    --btn-attach-size: 42px;
+    --btn-attach-radius: 15px;
+    --btn-attach-hover-bg: var(--nova-surface-soft);
+    --btn-attach-hover-color: var(--nova-primary);
+    --btn-attach-active-bg: color-mix(in srgb, var(--nova-primary) 12%, var(--nova-surface-soft));
+
+    --btn-send-size: 42px;
+    --btn-send-radius: 50%;
+    --btn-send-bg: var(--nova-button-gradient);
+    --btn-send-color: #ffffff;
+    --btn-send-shadow: 0 5px 14px color-mix(in srgb, var(--nova-primary) 24%, transparent);
+    --btn-send-shadow-hover: 0 8px 20px color-mix(in srgb, var(--nova-primary) 34%, transparent);
+    --btn-send-active-bg: var(--nova-primary-strong);
+    --btn-send-disabled-bg: var(--nova-surface-soft);
+    --btn-send-disabled-color: var(--nova-text-muted);
+
+    --chip-radius: 13px;
+    --quick-radius: 16px;
+    --quick-hover-bg: color-mix(in srgb, var(--nova-primary) 8%, var(--nova-surface));
+    --quick-active-bg: color-mix(in srgb, var(--nova-primary) 14%, var(--nova-surface));
 }
 
 :root[data-theme='dark'] {
@@ -2786,6 +3004,13 @@ textarea {
     --nova-button-gradient: linear-gradient(135deg, #b39df7 0%, #8f78e8 100%);
     --nova-overlay: rgba(6, 6, 12, 0.62);
     --nova-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+
+    /* 深色模式下对话框的阴影与聚焦描边微调 */
+    --input-shadow: 0 6px 22px rgba(0, 0, 0, 0.22);
+    --input-shadow-focus: 0 8px 26px rgba(0, 0, 0, 0.28);
+    --input-border-hover: color-mix(in srgb, var(--nova-primary) 50%, var(--nova-border));
+    --btn-send-shadow: 0 5px 14px color-mix(in srgb, var(--nova-primary) 32%, transparent);
+    --btn-send-shadow-hover: 0 8px 20px color-mix(in srgb, var(--nova-primary) 42%, transparent);
 }
 
 html,
@@ -3214,6 +3439,7 @@ button {
     border-top: 1px solid var(--nova-border);
     background: color-mix(in srgb, var(--nova-bg) 92%, transparent);
     backdrop-filter: blur(18px);
+    transition: background-color 0.25s ease, border-color 0.2s ease, padding 0.2s ease;
 }
 
 .attachment-list {
@@ -3419,74 +3645,130 @@ button {
     display: none;
 }
 
+/* ---- 对话框容器：默认 / 悬停 / 聚焦(激活) / HITL 强调态 ---- */
 .input-area {
-    min-height: 54px;
+    min-height: var(--input-min-height);
     display: flex;
     align-items: flex-end;
-    gap: 6px;
-    padding: 6px;
-    border: 1px solid var(--nova-border);
-    border-radius: 20px;
-    background: var(--nova-surface);
-    box-shadow: 0 5px 20px rgba(31, 41, 55, 0.04);
+    gap: var(--input-gap);
+    padding: var(--input-padding);
+    border: 1px solid var(--input-border);
+    border-radius: var(--input-radius);
+    background: var(--input-bg);
+    box-shadow: var(--input-shadow);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
+/* 悬停：边框轻微高亮，提示可交互 */
+.input-area:hover {
+    border-color: var(--input-border-hover);
+}
+
+/* 聚焦 / 激活：主色描边 + 柔和光环，明确输入焦点 */
 .input-area:focus-within {
-    border-color: color-mix(in srgb, var(--nova-primary) 55%, var(--nova-border));
-    background: var(--nova-surface);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--nova-primary) 10%, transparent);
+    border-color: var(--input-border-focus);
+    background: var(--input-bg);
+    box-shadow: 0 0 0 3px var(--input-ring-focus), var(--input-shadow-focus);
 }
 
+/* HITL（需用户补充信息）场景下的强调态 */
+.input-area.hitl-active {
+    border-color: color-mix(in srgb, var(--nova-primary) 45%, var(--input-border));
+    background: color-mix(in srgb, var(--nova-primary) 6%, var(--input-bg));
+}
+
+/* ---- 附件按钮：默认 / 悬停 / 激活 / 禁用 ---- */
 .attach-btn {
-    width: 42px;
-    height: 42px;
+    width: var(--btn-attach-size);
+    height: var(--btn-attach-size);
     display: grid;
-    flex: 0 0 42px;
+    flex: 0 0 var(--btn-attach-size);
     place-items: center;
     padding: 0;
-    border-radius: 15px;
+    border: none;
+    border-radius: var(--btn-attach-radius);
+    background: transparent;
     color: var(--nova-text-secondary);
+    cursor: pointer;
+    transition: background-color 0.18s ease, color 0.18s ease, transform 0.12s ease;
 }
 
-.attach-btn:hover {
-    background: var(--nova-surface-soft);
-    color: var(--nova-primary);
+.attach-btn:hover:not(:disabled) {
+    background: var(--btn-attach-hover-bg);
+    color: var(--btn-attach-hover-color);
 }
 
+.attach-btn:active:not(:disabled) {
+    background: var(--btn-attach-active-bg);
+    transform: scale(0.94);
+}
+
+.attach-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    background: transparent;
+    color: var(--nova-text-muted);
+}
+
+/* ---- 多行输入框 ---- */
 .input-area textarea {
     min-width: 0;
     min-height: 42px;
     max-height: 126px;
     padding: 10px 4px 8px;
-    color: var(--nova-text);
-    font-size: 0.92rem;
-    line-height: 1.5;
+    border: none;
+    background: transparent;
+    resize: none;
+    outline: none;
+    font-family: inherit;
+    color: var(--input-text);
+    font-size: var(--input-font-size);
+    line-height: var(--input-line-height);
 }
 
 .input-area textarea::placeholder {
-    color: var(--nova-text-muted);
+    color: var(--input-placeholder);
 }
 
+.input-area textarea:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* ---- 发送按钮：默认 / 悬停 / 激活 / 禁用 ---- */
 .send-btn {
-    width: 42px;
-    height: 42px;
-    flex: 0 0 42px;
-    border-radius: 50%;
-    background: var(--nova-button-gradient);
-    box-shadow: 0 5px 14px color-mix(in srgb, var(--nova-primary) 24%, transparent);
+    width: var(--btn-send-size);
+    height: var(--btn-send-size);
+    flex: 0 0 var(--btn-send-size);
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: var(--btn-send-radius);
+    background: var(--btn-send-bg);
+    color: var(--btn-send-color);
+    cursor: pointer;
+    box-shadow: var(--btn-send-shadow);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
 }
 
-.send-btn:hover {
-    background: var(--nova-button-gradient);
+.send-btn:hover:not(:disabled) {
+    background: var(--btn-send-bg);
     transform: translateY(-1px);
+    box-shadow: var(--btn-send-shadow-hover);
+}
+
+.send-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.96);
+    box-shadow: var(--btn-send-shadow);
 }
 
 .send-btn:disabled,
 .send-btn:disabled:hover {
-    background: var(--nova-surface-soft);
+    background: var(--btn-send-disabled-bg);
     box-shadow: none;
-    color: var(--nova-text-muted);
+    color: var(--btn-send-disabled-color);
     opacity: 1;
+    cursor: not-allowed;
     transform: none;
 }
 
@@ -3511,18 +3793,32 @@ button {
     flex: 0 0 auto;
     padding: 6px 12px;
     border: 1px solid var(--nova-border);
-    border-radius: 16px;
+    border-radius: var(--quick-radius);
     background: var(--nova-surface);
     color: var(--nova-text-secondary);
     font-size: 0.72rem;
+    line-height: 1.4;
     cursor: pointer;
-    transition: border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+    transition: border-color 0.18s ease, color 0.18s ease, background-color 0.18s ease, transform 0.12s ease;
+}
+
+.quick-prompts button:hover {
+    border-color: color-mix(in srgb, var(--nova-primary) 45%, var(--nova-border));
+    background: var(--quick-hover-bg);
+    color: var(--nova-primary);
 }
 
 .quick-prompts button:active {
     border-color: var(--nova-primary);
+    background: var(--quick-active-bg);
     color: var(--nova-primary);
     transform: scale(0.97);
+}
+
+.quick-prompts button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .footer-text {
@@ -3547,6 +3843,17 @@ button {
 .hitl-option {
     border-color: var(--nova-border);
     background: var(--nova-surface-soft);
+    cursor: pointer;
+    transition: border-color 0.18s ease, background-color 0.18s ease, color 0.18s ease, transform 0.12s ease;
+}
+
+.hitl-option:hover {
+    border-color: var(--nova-primary);
+    background: color-mix(in srgb, var(--nova-primary) 10%, var(--nova-surface-soft));
+}
+
+.hitl-option:active {
+    transform: scale(0.97);
 }
 
 .drawer-layer {
@@ -4151,6 +4458,28 @@ button {
     .message-content {
         padding: 11px 14px;
         font-size: 0.9rem;
+    }
+
+    /* 极窄屏：压缩输入区内边距与间距，按钮保持可点击尺寸 */
+    .input-area {
+        gap: 4px;
+        padding: 5px;
+        border-radius: 18px;
+    }
+
+    .attach-btn,
+    .send-btn {
+        flex: 0 0 40px;
+        width: 40px;
+        height: 40px;
+    }
+
+    .attachment-chip {
+        max-width: 60vw;
+    }
+
+    .quick-prompts {
+        margin-top: 7px;
     }
 }
 

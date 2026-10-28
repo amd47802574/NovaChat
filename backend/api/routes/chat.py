@@ -7,25 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 
-from backend.api.resources import CHAT_UPLOAD_DIR, ensure_chat_upload_dir
-from backend.chat import chat_with_agent, chat_with_agent_stream
-from backend.chat.attachments import (
-    attachment_disk_path,
-    detect_kind,
-    extract_document_text,
-    max_bytes_for,
-    mime_for,
-    new_stored_name,
-    resolve_chat_attachments,
-    vision_enabled,
-)
-from backend.chat.service import humanize_provider_error
 from backend.db.models import ChatAttachment, User
-from backend.infra.auth import get_current_user
+from backend.infra.auth import get_current_user, require_conversation_access
 from backend.infra.database import SessionLocal
 from backend.schemas import ChatRequest, ChatResponse
 
-router = APIRouter(tags=["chat"])
+# 对话相关接口统一要求「非超级管理员」权限：超级管理员为纯治理角色，不参与对话。
+# 权限在校服务端校验，与前端是否渲染对话界面无关。
+router = APIRouter(
+    tags=["chat"], dependencies=[Depends(require_conversation_access)]
+)
 
 
 async def _save_upload_with_limit(file: UploadFile, path, max_bytes: int) -> int:
@@ -56,6 +47,8 @@ async def _save_upload_with_limit(file: UploadFile, path, max_bytes: int) -> int
 @router.get("/chat/capabilities")
 async def chat_capabilities(_: User = Depends(get_current_user)):
     """前端据此决定附件选择器是否接受图片（图像理解依赖多模态模型）。"""
+    from backend.chat.attachments import vision_enabled
+
     return {"vision_enabled": vision_enabled()}
 
 
@@ -65,6 +58,16 @@ async def upload_chat_attachment(
     current_user: User = Depends(get_current_user),
 ):
     """上传聊天附件（图片/文档），返回附件 id 供聊天请求引用。"""
+    from backend.api.resources import CHAT_UPLOAD_DIR, ensure_chat_upload_dir
+    from backend.chat.attachments import (
+        detect_kind,
+        extract_document_text,
+        max_bytes_for,
+        mime_for,
+        new_stored_name,
+        vision_enabled,
+    )
+
     filename = (file.filename or "").strip()
     if not filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
@@ -138,6 +141,9 @@ async def download_chat_attachment(
     current_user: User = Depends(get_current_user),
 ):
     """下载/预览自己会话中上传过的附件（图片气泡展示走该接口）。"""
+    from backend.api.resources import CHAT_UPLOAD_DIR
+    from backend.chat.attachments import attachment_disk_path
+
     db = SessionLocal()
     try:
         attachment = (
@@ -161,6 +167,8 @@ async def download_chat_attachment(
 
 def _resolve_request_attachments(request: ChatRequest, current_user: User) -> list:
     """校验聊天请求中的附件引用；无效引用直接 400，避免静默丢弃。"""
+    from backend.chat.attachments import resolve_chat_attachments
+
     if not request.attachments:
         return []
     try:
@@ -174,6 +182,9 @@ def _resolve_request_attachments(request: ChatRequest, current_user: User) -> li
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest, current_user: User = Depends(get_current_user)):
+    from backend.chat import chat_with_agent
+    from backend.chat.service import humanize_provider_error
+
     try:
         session_id = request.session_id or "default_session"
         attachments = _resolve_request_attachments(request, current_user)
@@ -210,6 +221,8 @@ async def chat_endpoint(request: ChatRequest, current_user: User = Depends(get_c
 
 @router.post("/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest, current_user: User = Depends(get_current_user)):
+    from backend.chat import chat_with_agent_stream
+
     try:
         # 附件校验放在流式响应开始前，失败时能以标准 HTTP 错误返回给前端
         attachments = _resolve_request_attachments(request, current_user)

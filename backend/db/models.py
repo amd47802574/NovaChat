@@ -14,6 +14,21 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    # 资料更新时间（角色/状态变更时刷新），供超级管理员后台展示与审计
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+    # 最近一次成功登录时间，供数据面板统计活跃度
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # 账号状态：is_active=False 表示被管理员禁用；is_locked=True 表示被锁定
+    # （既可能是管理员手动锁定，也可能是连续登录失败触发的临时锁定）。
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # 连续登录失败次数，成功后清零；达到阈值则触发临时锁定
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 临时锁定的到期时间（UTC 朴素时间）；为空表示未设置临时锁定
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
 
@@ -82,3 +97,27 @@ class ParentChunk(Base):
     chunk_level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     chunk_idx: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AuditLog(Base):
+    """安全审计日志：记录超级管理员后台的所有特权操作与关键登录事件。
+
+    仅追加（append-only），不支持修改或删除，作为不可抵赖的操作留痕。
+    """
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    # 操作发起者（超级管理员用户名）；登录类事件记录登录者自身
+    actor: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    actor_role: Mapped[str] = mapped_column(String(20), default="super_admin", nullable=False)
+    # 动作类型，如 login / user_create / user_disable / user_enable / role_change 等
+    action: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    # 操作对象类型与标识（如 user / document），便于按对象追溯
+    target_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # 可读的变更细节（如「将角色 user -> admin」）
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 来源 IP，用于异地登录与异常操作溯源
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True, nullable=False)

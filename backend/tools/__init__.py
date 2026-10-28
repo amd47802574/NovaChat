@@ -10,7 +10,7 @@ from backend.tools.weather import get_current_weather_tool as get_current_weathe
 from backend.tools.documents import list_documents
 from backend.tools.datetime_tool import get_current_time
 from backend.tools.calculator import calculate
-from backend.tools.session_analyzer import analyze_conversation_history
+from backend.tools.session_analyzer import make_analyze_conversation_history
 from backend.tools.web_search import web_search
 from backend.tools.text_analyzer import analyze_text
 
@@ -27,7 +27,7 @@ __all__ = [
     "list_documents",
     "get_current_time",
     "calculate",
-    "analyze_conversation_history",
+    "make_analyze_conversation_history",
     "web_search",
     "analyze_text",
     # MCP 相关

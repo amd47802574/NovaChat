@@ -27,7 +27,7 @@
         <div class="user-avatar">{{ authStore.currentUser?.username?.slice(0, 1).toUpperCase() }}</div>
         <div>
           <span>{{ authStore.currentUser?.username }}</span>
-          <small>{{ authStore.currentUser?.role === 'admin' ? '管理员' : '普通用户' }}</small>
+          <small>{{ roleLabel }}</small>
         </div>
       </div>
       <button v-if="authStore.isAuthenticated" @click="authStore.handleLogout" class="danger-btn logout-btn">
@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
 import { useSessionStore } from '@/stores/sessions';
@@ -45,6 +46,12 @@ import { useSessionStore } from '@/stores/sessions';
 const authStore = useAuthStore();
 const chatStore = useChatStore();
 const sessionStore = useSessionStore();
+
+const roleLabel = computed(() => {
+  if (authStore.currentUser?.role === 'super_admin') return '超级管理员';
+  if (authStore.currentUser?.role === 'admin') return '管理员';
+  return '普通用户';
+});
 
 const onNewChat = () => {
   chatStore.handleNewChat();

@@ -151,11 +151,12 @@ const ACCEPT_ATTR = computed(() =>
 );
 const MAX_ATTACHMENTS = 6;
 const quickPrompts = [
-  '帮我总结核心内容',
-  '解释得更简单一些',
-  '列出关键步骤',
-  '对比不同观点',
-  '给我一个示例',
+  '你是谁？',
+  '你能做什么？',
+  '现在几点了？',
+  '深圳今天天气怎么样？',
+  '你有哪些知识库？',
+  '总结一下我们的聊天记录',
 ];
 
 const isUploading = computed(() => attachments.value.some((item) => item.status === 'uploading'));

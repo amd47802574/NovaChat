@@ -22,7 +22,8 @@ export const useAuthStore = defineStore('auth', {
     authForm: {
       username: '',
       password: '',
-      role: 'user' as 'user' | 'admin',
+      confirm_password: '',
+      role: 'user' as 'user' | 'admin' | 'super_admin',
       admin_code: '',
     },
     authLoading: false,
@@ -34,6 +35,9 @@ export const useAuthStore = defineStore('auth', {
     },
     isAdmin(): boolean {
       return this.currentUser?.role === 'admin';
+    },
+    isSuperAdmin(): boolean {
+      return this.currentUser?.role === 'super_admin';
     },
   },
 
@@ -75,6 +79,7 @@ export const useAuthStore = defineStore('auth', {
         
         // Reset password fields
         this.authForm.password = '';
+        this.authForm.confirm_password = '';
         this.authForm.admin_code = '';
       } catch (error: any) {
         const errMsg = error.response?.data?.detail || error.message || '认证失败';

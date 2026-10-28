@@ -13,8 +13,10 @@
 设计说明:
 - `make_search_knowledge_base` 等依赖 ChatRequestContext 的工厂类工具不在此处暴露,
   因为 MCP Server 作为独立子进程运行,无法访问主进程的请求级上下文。
-- 其余 7 个纯函数工具(get_current_weather / list_documents / get_current_time /
-  calculate / analyze_conversation_history / web_search / analyze_text)均会注册到 MCP Server。
+- `make_analyze_conversation_history` 同样依赖每请求的 ChatRequestContext 来界定
+  「当前会话」作用域(严格会话隔离,禁止跨会话检索),因此也不在此处暴露。
+- 其余 6 个纯函数工具(get_current_weather / list_documents / get_current_time /
+  calculate / web_search / analyze_text)均会注册到 MCP Server。
 """
 from __future__ import annotations
 
@@ -35,7 +37,6 @@ except ImportError:  # pragma: no cover - 老版本回退
         ) from exc
 
 from backend.tools import (
-    analyze_conversation_history,
     analyze_text,
     calculate,
     get_current_time,
@@ -50,9 +51,10 @@ logger = logging.getLogger(__name__)
 # 服务端暴露的工具名,与 make_search_knowledge_base 区分开
 SERVER_NAME = "NovaChat-Tools"
 
-# 依赖请求上下文的工具,不在 MCP Server 模式下暴露
+# 依赖请求上下文(当前会话作用域)的工具,不在 MCP Server 模式下暴露
 EXCLUDED_TOOL_NAMES: List[str] = [
     "search_knowledge_base",
+    "analyze_conversation_history",
 ]
 
 
@@ -66,7 +68,6 @@ def _create_mcp_server() -> _McpServer:
         list_documents,
         get_current_time,
         calculate,
-        analyze_conversation_history,
         web_search,
         analyze_text,
     ]

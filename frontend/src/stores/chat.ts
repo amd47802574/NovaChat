@@ -32,7 +32,7 @@ const getUrlView = (): 'settings' | null => {
   }
 };
 
-// 把当前视图同步到 URL：settings 写入参数，其余视图移除参数，保证刷新后停留在正确页面。
+// 把当前视图同步到 URL：settings 写入参数，其余视图移除参数，保证刷新后停留在文档管理页。
 const syncViewToUrl = (nav: 'newChat' | 'history' | 'settings') => {
   if (typeof window === 'undefined' || !window.history?.replaceState) return;
   try {

@@ -168,7 +168,7 @@ def test_server_creation():
 
     expected = [
         "get_current_weather", "list_documents", "get_current_time",
-        "calculate", "analyze_conversation_history", "web_search", "analyze_text",
+        "calculate", "web_search", "analyze_text",
     ]
     missing = [t for t in expected if t not in registered]
     if missing:
@@ -176,8 +176,9 @@ def test_server_creation():
         console.print(f"  实际注册: {registered}")
         return False
 
-    # search_knowledge_base 应被排除
+    # 依赖请求上下文(当前会话作用域)的工具应被排除
     assert "search_knowledge_base" not in registered, "search_knowledge_base 不应在 MCP Server 中暴露"
+    assert "analyze_conversation_history" not in registered, "analyze_conversation_history 依赖当前会话上下文,不应在 MCP Server 中暴露"
     console.print(f"  ✓ 已注册 {len(registered)} 个工具: {registered}")
     console.print("  ✓ search_knowledge_base 已正确排除")
     return True

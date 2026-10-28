@@ -86,6 +86,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _ensure_chat_message_columns()
+    _ensure_user_columns()
 
 
 def _ensure_chat_message_columns() -> None:
@@ -99,3 +100,26 @@ def _ensure_chat_message_columns() -> None:
             )
     except Exception as exc:
         print(f"chat_messages.attachments 列迁移失败（可手动执行 ALTER TABLE 补齐）: {exc}")
+
+
+def _ensure_user_columns() -> None:
+    """create_all 只建表不补列，对已存在的 users 做轻量自动迁移（账号锁定/禁用支持）。"""
+    from sqlalchemy import text
+
+    columns = [
+        "is_active BOOLEAN NOT NULL DEFAULT TRUE",
+        "is_locked BOOLEAN NOT NULL DEFAULT FALSE",
+        "failed_login_attempts INTEGER NOT NULL DEFAULT 0",
+        "locked_until TIMESTAMP",
+        "updated_at TIMESTAMP NOT NULL DEFAULT now()",
+        "last_login_at TIMESTAMP",
+    ]
+    try:
+        with engine.begin() as conn:
+            for col in columns:
+                name = col.split(" ", 1)[0]
+                conn.execute(
+                    text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {col.split(' ', 1)[1]}")
+                )
+    except Exception as exc:
+        print(f"users 锁定/禁用相关列迁移失败（可手动执行 ALTER TABLE 补齐）: {exc}")
