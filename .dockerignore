@@ -1,0 +1,28 @@
+# 版本控制
+.git
+.gitignore
+
+# Python
+.venv
+__pycache__/
+*.py[oc]
+*.egg-info
+dist/
+build/
+
+# 前端（前端在镜像内由 Node 重新构建，无需把本机 node_modules 带进去）
+frontend/node_modules/
+frontend/dist/
+
+# 运行时数据与密钥
+.env
+data/
+volumes/
+
+# 测试与文档（可选，减小构建上下文）
+tests/
+*.md
+presentation.html
+project_visualization.html
+package-lock.json
+mcp_config.example.json

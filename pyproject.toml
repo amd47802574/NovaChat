@@ -1,6 +1,6 @@
 [project]
 name = "NovaChat"
-version = "0.1.0"
+version = "1.0.0"
 description = "NovaChat 星智问答：基于 RAG 的智能知识问答平台"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -1,0 +1,141 @@
+# ============================================================
+# NovaChat v1.0.0 —— 一键发布部署编排
+# 包含：应用本身 + Milvus(etcd+minio+standalone) + PostgreSQL + Redis
+# 用法：
+#   1) cp .env.example .env   （按需修改 API Key / 模型名）
+#   2) docker compose -f docker-compose.release.yml up -d
+#   3) 浏览器访问 http://localhost:8000
+# ============================================================
+services:
+  # ---------- 应用（前端 + 后端，单容器） ----------
+  app:
+    build: .
+    image: novachat:1.0.0
+    container_name: novachat-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # 容器内通过服务名互访，覆盖 .env.example 中的 127.0.0.1
+      MILVUS_HOST: standalone
+      MILVUS_PORT: "19530"
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/langchain_app
+      REDIS_URL: redis://redis:6379/0
+      # 首次启动需要联网下载本地嵌入模型（BAAI/bge-m3 或 all-MiniLM-L6-v2）；
+      # 下载完成后可改回 1 走离线模式避免启动卡顿
+      HF_HUB_OFFLINE: "0"
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - app_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      standalone:
+        condition: service_healthy
+
+  # ---------- 业务数据库 ----------
+  postgres:
+    container_name: novachat-postgres
+    image: postgres:15
+    environment:
+      POSTGRES_DB: langchain_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d langchain_app"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    container_name: novachat-redis
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------- Milvus 依赖 ----------
+  etcd:
+    container_name: novachat-milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.18
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/etcd:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio:
+    container_name: novachat-milvus-minio
+    image: minio/minio:RELEASE.2024-05-28T17-19-04Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  standalone:
+    container_name: novachat-milvus-standalone
+    image: milvusdb/milvus:v2.5.14
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      MINIO_REGION: us-east-1
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    depends_on:
+      - etcd
+      - minio
+
+  # Milvus 可视化管理（可选，便于排查）
+  attu:
+    container_name: novachat-milvus-attu
+    image: zilliz/attu:v2.5.11
+    environment:
+      - MILVUS_URL=standalone:19530
+      - PORT=3000
+    ports:
+      - "127.0.0.1:8080:3000"
+    depends_on:
+      - standalone
+
+volumes:
+  hf_cache:
+  app_data:
+
+networks:
+  default:
+    name: novachat
