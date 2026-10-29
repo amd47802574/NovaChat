@@ -91,8 +91,9 @@ def get_metrics(_: User = Depends(require_super_admin), db: Session = Depends(ge
         )
         total_sessions = db.query(func.count(ChatSession.id)).scalar() or 0
         total_messages = db.query(func.count(ChatMessage.id)).scalar() or 0
-
-        # 知识库文档数依赖 Milvus，失败时不阻塞面板，仅记为 0
+        # 「文档管理」即知识库文档管理：知识库以 Milvus 向量库为唯一存储，
+        # 文档按 filename 聚合（一篇文件 = 一篇文档），故此处按去重 filename 计数。
+        # 依赖 Milvus，失败时降级为 0，不阻塞面板其余指标。
         total_documents = 0
         try:
             from backend.api.resources import milvus_manager
@@ -103,7 +104,7 @@ def get_metrics(_: User = Depends(require_super_admin), db: Session = Depends(ge
             )
             total_documents = len({r.get("filename") for r in rows})
         except Exception as exc:
-            print(f"[metrics] 文档数统计失败（已记为 0）: {exc}")
+            print(f"[metrics] 知识库文档数统计失败（已记为 0）: {exc}")
 
         days = _last_n_days(7)
         reg_rows = (

@@ -90,7 +90,7 @@ const statCards = computed(() => {
     { label: '管理员', value: m.admin_users, icon: 'fas fa-user-shield', color: '#6fa8dc' },
     { label: '会话总数', value: m.total_sessions, icon: 'fas fa-comments', color: '#ba9fd6' },
     { label: '消息总数', value: m.total_messages, icon: 'fas fa-envelope', color: '#f6b26b' },
-    { label: '知识库文档', value: m.total_documents, icon: 'fas fa-database', color: '#76c7c0' },
+    { label: '知识库文档', value: m.total_documents, icon: 'fas fa-folder-open', color: '#9b8cff' },
   ];
 });
 

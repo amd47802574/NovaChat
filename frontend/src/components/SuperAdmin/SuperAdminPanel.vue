@@ -28,6 +28,9 @@
       <button :class="['sa-nav-btn', { active: tab === 'audit' }]" @click="tab = 'audit'">
         <i class="fas fa-clipboard-list"></i> 安全审计
       </button>
+      <button :class="['sa-nav-btn', { active: tab === 'docs' }]" @click="tab = 'docs'">
+        <i class="fas fa-folder-open"></i> 文档管理
+      </button>
     </nav>
 
     <main class="sa-content">
@@ -35,6 +38,7 @@
       <UserManagement v-else-if="tab === 'users'" />
       <ModelConfigView v-else-if="tab === 'models'" />
       <AuditLogView v-else-if="tab === 'audit'" />
+      <DocumentSettings v-else-if="tab === 'docs'" embedded />
     </main>
   </div>
 </template>
@@ -46,9 +50,10 @@ import DashboardView from './DashboardView.vue';
 import UserManagement from './UserManagement.vue';
 import ModelConfigView from './ModelConfigView.vue';
 import AuditLogView from './AuditLogView.vue';
+import DocumentSettings from '@/components/Documents/DocumentSettings.vue';
 
 const authStore = useAuthStore();
-const tab = ref<'dashboard' | 'users' | 'models' | 'audit'>('dashboard');
+const tab = ref<'dashboard' | 'users' | 'models' | 'audit' | 'docs'>('dashboard');
 
 const onLogout = () => {
   if (confirm('确定退出登录吗？')) {

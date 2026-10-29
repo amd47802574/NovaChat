@@ -38,8 +38,8 @@ const syncViewToUrl = (nav: 'newChat' | 'history' | 'settings') => {
   try {
     const url = new URL(window.location.href);
     if (nav === SETTINGS_VIEW) {
-      if (url.searchParams.get(VIEW_URL_PARAM) === SETTINGS_VIEW) return;
-      url.searchParams.set(VIEW_URL_PARAM, SETTINGS_VIEW);
+      if (url.searchParams.get(VIEW_URL_PARAM) === nav) return;
+      url.searchParams.set(VIEW_URL_PARAM, nav);
     } else {
       if (!url.searchParams.has(VIEW_URL_PARAM)) return;
       url.searchParams.delete(VIEW_URL_PARAM);
@@ -83,7 +83,7 @@ export const useChatStore = defineStore('chat', {
     messagesBySession: {} as Record<string, Message[]>,
     userInput: '',
     isLoading: false,
-    activeNav: (getUrlView() === SETTINGS_VIEW ? 'settings' : 'newChat') as 'newChat' | 'history' | 'settings',
+    activeNav: (getUrlView() || 'newChat') as 'newChat' | 'history' | 'settings',
     sessionId: getUrlSessionId() || getStoredSessionId() || createSessionId(),
     streamingSessionId: null as string | null,
     abortController: null as AbortController | null,

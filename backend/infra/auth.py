@@ -9,7 +9,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from backend.infra.database import SessionLocal
+from backend.infra.database import SessionLocal, get_db
 from backend.db.models import User
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret")
@@ -48,14 +48,6 @@ class LoginError(Exception):
         self.message = message
         self.status_code = status_code
         super().__init__(message)
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
@@ -190,7 +182,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != "admin":
+    # 管理员及以上（admin 与 super_admin）均可访问；super_admin 拥有不低于管理员的全部治理权限。
+    if current_user.role not in ("admin", "super_admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="管理员权限不足")
     return current_user
 

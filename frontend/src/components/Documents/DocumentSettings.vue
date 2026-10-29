@@ -1,11 +1,11 @@
 <template>
   <div class="settings-panel">
     <div class="settings-header">
-      <button class="settings-back-btn" type="button" title="返回对话" @click="backToChat">
+      <button v-if="!embedded" class="settings-back-btn" type="button" title="返回对话" @click="backToChat">
         <i class="fas fa-arrow-left"></i>
       </button>
       <div>
-        <h2><i class="fas fa-cog"></i> 文档管理</h2>
+        <h2><i class="fas fa-cog"></i> 知识库文档管理</h2>
         <p>上传文档进行向量化处理，支持 PDF 和 Word、Excel、Markdown 格式</p>
       </div>
     </div>
@@ -44,6 +44,9 @@ import UploadSection from './UploadSection.vue';
 import DocumentItem from './DocumentItem.vue';
 import { useDocumentStore } from '@/stores/documents';
 import { useChatStore } from '@/stores/chat';
+
+// embedded=true 时作为超级管理员后台「文档管理」 Tab 内嵌，隐藏「返回对话」按钮。
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false });
 
 const documentStore = useDocumentStore();
 const chatStore = useChatStore();

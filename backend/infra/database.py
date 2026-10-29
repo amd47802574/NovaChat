@@ -80,6 +80,19 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expi
 Base = declarative_base()
 
 
+def get_db():
+    """FastAPI 依赖：为每个请求提供一个 SQLAlchemy 会话，请求结束后自动关闭。
+
+    这是数据库连接会话的**唯一来源**，所有路由都应从 ``backend.infra.database`` 导入本函数，
+    避免各路由文件因漏写导入而出现 ``NameError: name 'get_db' is not defined``。
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 def init_db() -> None:
     # Delayed import to avoid circular dependency.
     import backend.db.models  # noqa: F401

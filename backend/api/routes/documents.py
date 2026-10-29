@@ -269,3 +269,29 @@ async def delete_document(filename: str, _: User = Depends(require_admin)):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除文档失败: {str(e)}")
+
+
+@router.delete("/documents/delete/async/{filename}", response_model=DocumentDeleteStartResponse)
+async def delete_document_async(
+    filename: str,
+    background_tasks: BackgroundTasks,
+    _: User = Depends(require_admin),
+):
+    from backend.api.resources import is_supported_document
+
+    if not is_supported_document(filename):
+        raise HTTPException(status_code=400, detail="仅支持 PDF、Word 和 Excel 文档")
+
+    job = delete_job_manager.create_job(
+        filename,
+        steps=DELETE_STEPS,
+        current_step="prepare",
+        message="正在提交删除任务",
+        completion_step="parent_store",
+    )
+    background_tasks.add_task(_process_delete_job, job["job_id"], filename)
+    return DocumentDeleteStartResponse(
+        job_id=job["job_id"],
+        filename=filename,
+        message=f"已提交删除任务：{filename}",
+    )
