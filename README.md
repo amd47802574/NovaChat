@@ -4,7 +4,7 @@ NovaChat（星智问答）是一个基于 Corrective RAG 的智能知识问答�
 
 ## Docker部署（不包含前后端，需额外启动）
 
-封装了Milvus、Redis、Postgres，不包含前后端原因：方便随时更改模型及密钥
+封装了Milvus、Redis、Postgres
 
 ### 1) 环境准备
 
