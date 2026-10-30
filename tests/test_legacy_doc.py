@@ -1,19 +1,84 @@
 from __future__ import annotations
 
 import os
+import struct
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from backend.indexing.document_loader import DocumentLoader
-from backend.indexing.legacy_doc import extract_legacy_doc_text
+from backend.indexing.legacy_doc import _parse_doc_streams, extract_legacy_doc_text
 
 SAMPLE_TEXT = (
     "NovaChat 旧版 Word 兼容性测试。\r"
     "这是一段用于验证 .doc 解析的中文文本。\r"
     "第二段落：系统应能提取此内容。"
 )
+
+
+def _build_streams(text: str, *, compressed: bool = False) -> tuple[bytes, bytes]:
+    """构造最小合法的 WordDocument 流与表流字节（单 piece，文本从 0x0200 开始）。"""
+    if compressed:
+        raw = text.encode("cp1252")
+        fc_raw = 0x0200 * 2 | 0x40000000
+    else:
+        raw = text.encode("utf-16-le")
+        fc_raw = 0x0200
+
+    # PlcPcd：CP[0]=0, CP[1]=n_chars；Pcd = flags(2B) + fc(4B) + prm(2B)
+    plc_pcd = struct.pack("<II", 0, len(text)) + struct.pack("<HIH", 0, fc_raw, 0)
+    # 表流：Pcdt = 0x02 + lcb(4B) + PlcPcd
+    table = struct.pack("<BI", 0x02, len(plc_pcd)) + plc_pcd
+
+    word = bytearray(0x0200)
+    struct.pack_into("<H", word, 0x0000, 0xA5EC)  # wIdent
+    struct.pack_into("<H", word, 0x0002, 0x00C1)  # nFib（Word 97）
+    struct.pack_into("<H", word, 0x000A, 0x0000)  # flags → 0Table
+    struct.pack_into("<I", word, 0x004C, len(text))  # ccpText
+    struct.pack_into("<II", word, 0x01A2, 0, len(table))  # fcClx=0, lcbClx
+    word += raw
+    return bytes(word), table
+
+
+class PieceTableParsingTests(unittest.TestCase):
+    """纯 Python 兜底解析器：直接喂 WordDocument/表流字节验证 piece table 解析。"""
+
+    def test_parses_utf16_text(self) -> None:
+        word, table = _build_streams("Hello 中文文本")
+        self.assertEqual(_parse_doc_streams(word, table), "Hello 中文文本")
+
+    def test_parses_8bit_compressed_text(self) -> None:
+        word, table = _build_streams("Legacy cp1252 text", compressed=True)
+        self.assertEqual(_parse_doc_streams(word, table), "Legacy cp1252 text")
+
+    def test_normalizes_word_control_chars(self) -> None:
+        word, table = _build_streams("第一段\r第二段\x07表格\x0c尾")
+        self.assertEqual(_parse_doc_streams(word, table), "第一段\n第二段\n表格\n尾")
+
+    def test_truncates_to_main_document_text(self) -> None:
+        # ccpText 小于全部文本长度时，只保留主文档正文
+        word, table = _build_streams("正文内容页眉噪音")
+        word = bytearray(word)
+        struct.pack_into("<I", word, 0x004C, 4)
+        self.assertEqual(_parse_doc_streams(bytes(word), table), "正文内容")
+
+    def test_rejects_wrong_magic(self) -> None:
+        word, table = _build_streams("x")
+        word = bytearray(word)
+        struct.pack_into("<H", word, 0x0000, 0x1234)
+        self.assertIsNone(_parse_doc_streams(bytes(word), table))
+
+    def test_returns_none_when_piece_out_of_range(self) -> None:
+        word, table = _build_streams("x")
+        # 把 fc 指到 WordDocument 流之外
+        plc_pcd = struct.pack("<II", 0, 1) + struct.pack("<HIH", 0, 0x7FFFFFF0, 0)
+        table = struct.pack("<BI", 0x02, len(plc_pcd)) + plc_pcd
+        self.assertIsNone(_parse_doc_streams(word, table))
+
+    def test_returns_none_on_empty_text(self) -> None:
+        word, table = _build_streams("   ")
+        self.assertIsNone(_parse_doc_streams(word, table))
 
 
 class LegacyDocRoutingTests(unittest.TestCase):
@@ -46,6 +111,7 @@ class LegacyDocRoutingTests(unittest.TestCase):
             patch("backend.indexing.legacy_doc._extract_with_antiword", return_value=None),
             patch("backend.indexing.legacy_doc._convert_with_libreoffice", return_value=None),
             patch("backend.indexing.legacy_doc._convert_with_word_com", return_value=None),
+            patch("backend.indexing.legacy_doc._extract_with_olefile", return_value=None),
         ):
             with self.assertRaises(ValueError) as ctx:
                 extract_legacy_doc_text("whatever.doc")
@@ -107,6 +173,17 @@ class LegacyDocRealFileTests(unittest.TestCase):
     def test_extract_real_doc_text(self) -> None:
         text = extract_legacy_doc_text(self.doc_path)
         self.assertIn("NovaChat 旧版 Word 兼容性测试", text)
+
+    def test_pure_python_fallback_extracts_real_doc(self) -> None:
+        """屏蔽全部外部工具，验证纯 Python OLE 解析能读取 Word 生成的真实 .doc。"""
+        with (
+            patch("backend.indexing.legacy_doc._extract_with_antiword", return_value=None),
+            patch("backend.indexing.legacy_doc._convert_with_libreoffice", return_value=None),
+            patch("backend.indexing.legacy_doc._convert_with_word_com", return_value=None),
+        ):
+            text = extract_legacy_doc_text(self.doc_path)
+        self.assertIn("NovaChat 旧版 Word 兼容性测试", text)
+        self.assertIn("第二段落", text)
 
     def test_load_document_end_to_end(self) -> None:
         chunks = DocumentLoader().load_document(self.doc_path, "兼容性测试.doc")
