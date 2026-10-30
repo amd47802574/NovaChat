@@ -7,6 +7,8 @@ import type {
   DashboardMetrics,
   ModelConfigField,
   ModelConfigResponse,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
   UpdateModelConfigRequest,
   UpdateModelConfigResponse,
   UpdateUserRequest,
@@ -120,6 +122,19 @@ export const useSuperAdminStore = defineStore('superAdmin', {
         const { data } = await api.post(`/super-admin/users/${userId}/toggle-active`);
         await this.fetchUsers();
         return data as { message: string };
+      } catch (error) {
+        return handleError(error);
+      }
+    },
+
+    async resetUserPassword(userId: number, payload: ResetPasswordRequest) {
+      try {
+        const { data } = await api.post<ResetPasswordResponse>(
+          `/super-admin/users/${userId}/reset-password`,
+          payload
+        );
+        await this.fetchUsers();
+        return data;
       } catch (error) {
         return handleError(error);
       }

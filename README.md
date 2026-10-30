@@ -595,10 +595,18 @@ StreamingResponse(
 
 ## 更新日志
 
+### 2026-10-30 旧版 .doc 解析新增纯 Python 兜底（无需外部工具）
+
+- **问题**：云服务器（Linux 容器）上传 `.doc` 报「antiword / LibreOffice / Word COM 均不可用」，本地 Windows 却正常——本地靠本机 Word（COM）兜底，容器内三种外部工具全缺；此前 Dockerfile 注释声称安装了解析链依赖，实际并未安装。
+- **纯 Python 兜底**：`backend/indexing/legacy_doc.py` 降级链末尾新增第四级——用 `olefile` 读取 OLE2 容器，直接解析 `WordDocument` 流的 FIB → CLX → piece table（PlcPcd），按每段标记的 8-bit（cp1252）/ 16-bit（UTF-16LE）解码拼接，并按 `ccpText` 截取主文档正文、规范化 Word 控制字符。**无需安装任何外部软件**，常规与快速保存文档均可解析（已用 Word 生成的真实中文 .doc 验证）。
+- **降级链顺序**：antiword → LibreOffice → Word COM → 纯 Python OLE 解析，前三级命中即返回，最后一级保证「零依赖环境」也有基本可用性；复杂排版（文本框、字段代码）可能混入少量噪音，追求精确转换仍建议安装 LibreOffice。
+- **部署修复**：Dockerfile 运行时镜像补装 `libreoffice-writer`（antiword 对中文 .doc 支持差故不采用），服务器需 `docker compose -f docker-compose.release.yml build app && up -d app` 重建生效；新增 `olefile` 直接依赖（纯 Python、零编译）。
+- **测试**：`tests/test_legacy_doc.py` 新增 piece table 解析单测（UTF-16/8-bit 双分支、控制字符规范化、ccpText 截断、非法结构拒绝）与「屏蔽全部外部工具后真实 .doc 走纯 Python 兜底」集成测试，共 13 项全部通过。
+
 ### 2026-10-27 用户对话支持「添加图片或文件」
 
 - **附件上传**：`POST /chat/attachments` 保存文件到 `data/chat_uploads/` 并登记到新表 `chat_attachments`。图片限 8MB（png/jpg/jpeg/gif/webp/bmp），文档限 30MB（pdf/doc/docx/txt/md/xls/xlsx），单条消息最多 6 个附件；未发送的附件 24 小时后在启动时自动清理。
-- **文档注入**：文档在**上传时**提取纯文本（复用知识库侧的解析链路，`.doc` 走 antiword → LibreOffice → Word COM 降级），发送时以「【附件文档：文件名】+ 正文」注入模型上下文，单文档上限 3 万字、单条消息合计 6 万字，超限截断并明确标注。
+- **文档注入**：文档在**上传时**提取纯文本（复用知识库侧的解析链路，`.doc` 走 antiword → LibreOffice → Word COM → 纯 Python OLE 解析降级），发送时以「【附件文档：文件名】+ 正文」注入模型上下文，单文档上限 3 万字、单条消息合计 6 万字，超限截断并明确标注。
 - **图片多模态**：使用支持图像理解的模型时设置 `CHAT_VISION_ENABLED=1`，图片会转成 `image_url` 内容块与其他文本一起发给模型；未开启时上传图片直接返回可读错误，而不是把 provider 的原始报错抛给用户。
 - **展示与持久化**：用户消息落库保留纯文本内容，附件元数据（`id`/`filename`/`kind`/`mime`）存入 `chat_messages.attachments`；气泡内渲染图片缩略图（点击大图预览）与文档卡片（点击下载），刷新或切换会话后仍然可见。附件按用户隔离，取文件需 Bearer Token。
 - **其它**：前端附件在上传阶段完成（带进度与失败提示），支持从剪贴板粘贴图片；`chat_messages` 采用「删后重插」写库，现按下标继承历史消息的 `rag_trace`/附件元数据，避免开新一轮时清空历史展示数据。

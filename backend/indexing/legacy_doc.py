@@ -1,14 +1,19 @@
 """旧版 Word (.doc) 二进制文档的文本提取。
 
 .doc 是 OLE2 复合二进制格式（Word 97-2003），而 docx2txt 只支持 ZIP 结构的 .docx，
-因此这里按 antiword → LibreOffice → Word COM 的顺序逐级降级提取文本，
+因此这里按 antiword → LibreOffice → Word COM → 纯 Python OLE 解析的顺序逐级降级提取文本，
 任一方式成功即返回；全部失败时抛出带修复指引的 ValueError。
+
+前三级依赖外部工具（antiword / LibreOffice / 本机 Word），最后一级是纯 Python 兜底：
+直接解析 OLE2 容器内 WordDocument 流的 piece table，无需安装任何外部软件，
+可覆盖绝大多数常规文档（含快速保存文档）；复杂排版（文本框、字段代码）可能混入少量噪音。
 """
 from __future__ import annotations
 
 import locale
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -139,11 +144,127 @@ def _convert_with_word_com(file_path: str) -> str | None:
         pythoncom.CoUninitialize()
 
 
+# ---- 纯 Python 兜底：直接解析 Word 97-2003 二进制格式 ----
+# FIB（File Information Block）中的关键偏移，均位于 WordDocument 流内
+_FIB_W_IDENT = 0xA5EC  # wIdent：Word 二进制格式魔数
+_FIB_FLAGS_OFFSET = 0x000A  # FibBase.flags，bit 9 (0x0200) 指定表流为 1Table/0Table
+_FIB_CCP_TEXT_OFFSET = 0x004C  # fibRgLw97.ccpText：主文档正文字符数
+_FIB_FC_CLX_OFFSET = 0x01A2  # fibRgFcLcb97.fcClx/lcbClx：CLX 在表流中的位置
+
+
+def _parse_doc_streams(word: bytes, table: bytes) -> str | None:
+    """从 WordDocument 流与表流的原始字节解析主文档文本（piece table 方式）。
+
+    仅实现 Word 97-2003 二进制格式的核心路径：FIB → CLX → PlcPcd → 文本片段，
+    常规与快速保存文档均可覆盖；遇到无法识别的结构时返回 None 交由调用方降级。
+    """
+    if len(word) < _FIB_FC_CLX_OFFSET + 8:
+        return None
+    if struct.unpack_from("<H", word, 0x0000)[0] != _FIB_W_IDENT:
+        return None
+
+    ccp_text = struct.unpack_from("<I", word, _FIB_CCP_TEXT_OFFSET)[0]
+    fc_clx, lcb_clx = struct.unpack_from("<II", word, _FIB_FC_CLX_OFFSET)
+    if lcb_clx == 0 or fc_clx + lcb_clx > len(table):
+        return None
+
+    # CLX：跳过若干 Prc（0x01 前缀），定位 Pcdt（0x02 前缀，其后 4 字节为 PlcPcd 长度）
+    pos, end = fc_clx, fc_clx + lcb_clx
+    plc_pcd: bytes | None = None
+    while pos < end:
+        clxt = table[pos]
+        if clxt == 0x01:
+            # Prc：clxt + 保留字节 + cbGrpprl(2B) + GrpPrl(cbGrpprl 字节)
+            if pos + 4 > end:
+                return None
+            cb = struct.unpack_from("<H", table, pos + 2)[0]
+            pos += 4 + cb
+        elif clxt == 0x02:
+            if pos + 5 > end:
+                return None
+            lcb = struct.unpack_from("<I", table, pos + 1)[0]
+            plc_pcd = table[pos + 5 : pos + 5 + lcb]
+            break
+        else:
+            return None
+    if not plc_pcd:
+        return None
+
+    # PlcPcd：(n+1) 个 CP(4B) + n 个 Pcd(8B)；Pcd 内 fc 字段位于偏移 +2
+    if (len(plc_pcd) - 4) % 12 != 0:
+        return None
+    n = (len(plc_pcd) - 4) // 12
+    if n <= 0:
+        return None
+    cps = struct.unpack_from(f"<{n + 1}I", plc_pcd, 0)
+    if any(cps[i] >= cps[i + 1] for i in range(n)):
+        return None
+
+    pieces: list[str] = []
+    for i in range(n):
+        cp_start, cp_end = cps[i], cps[i + 1]
+        fc_raw = struct.unpack_from("<I", plc_pcd, 4 * (n + 1) + i * 8 + 2)[0]
+        fc = fc_raw & 0x3FFFFFFF
+        if fc_raw & 0x40000000:
+            # 8-bit 压缩文本：fc 为逻辑偏移（实际字节偏移为其一半），按 cp1252 解码
+            offset, size = fc // 2, cp_end - cp_start
+            if offset + size > len(word):
+                return None
+            pieces.append(word[offset : offset + size].decode("cp1252", errors="replace"))
+        else:
+            # 16-bit 文本：UTF-16LE，每字符 2 字节
+            offset, size = fc, (cp_end - cp_start) * 2
+            if offset + size > len(word):
+                return None
+            pieces.append(word[offset : offset + size].decode("utf-16-le", errors="replace"))
+
+    full = "".join(pieces)
+    # 主文档正文对应 CP [0, ccpText)，其后是脚注/页眉等附属文本
+    if 0 < ccp_text < len(full):
+        full = full[:ccp_text]
+
+    # 规范化 Word 控制字符：\r 段落、\x07 表格单元格/行、\x0b 软换行、\x0c 分页
+    for control in ("\x07", "\x0b", "\x0c"):
+        full = full.replace(control, "\n")
+    full = full.replace("\r", "\n")
+    # 丢弃其余不可打印控制字符（字段标记 \x13-\x15、可选连字符 \x1e 等）
+    cleaned = "".join(ch for ch in full if ch in "\t\n" or ch >= " ")
+    return cleaned.strip() or None
+
+
+def _extract_with_olefile(file_path: str) -> str | None:
+    """纯 Python 兜底：用 olefile 读取 OLE2 容器，直接解析 WordDocument 流。"""
+    try:
+        import olefile
+    except ImportError:
+        return None
+
+    try:
+        with olefile.OleFileIO(file_path) as ole:
+            if not ole.exists("WordDocument"):
+                return None
+            word = ole.openstream("WordDocument").read()
+            if len(word) < _FIB_FC_CLX_OFFSET + 8:
+                return None
+            # fWhichTblStm（FibBase.flags bit 9）决定表流名，读不到时尝试另一个
+            flags = struct.unpack_from("<H", word, _FIB_FLAGS_OFFSET)[0]
+            table_name = "1Table" if flags & 0x0200 else "0Table"
+            if not ole.exists(table_name):
+                table_name = "1Table" if table_name == "0Table" else "0Table"
+                if not ole.exists(table_name):
+                    return None
+            table = ole.openstream(table_name).read()
+        return _parse_doc_streams(word, table)
+    except Exception:
+        return None
+
+
 # (展示名称, 提取函数)，按优先级排列
 _EXTRACTORS: tuple[tuple[str, Callable[[str], str | None]], ...] = (
     ("antiword", _extract_with_antiword),
     ("LibreOffice", _convert_with_libreoffice),
     ("Word COM", _convert_with_word_com),
+    ("纯 Python OLE 解析", _extract_with_olefile),
 )
 
 

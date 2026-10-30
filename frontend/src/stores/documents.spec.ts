@@ -109,11 +109,9 @@ describe('document upload polling', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await flushPromises();
 
-    expect(store.uploadProgress).toBe('文档处理完成');
-    expect(store.uploadSteps.find((step) => step.key === 'vector_store')).toMatchObject({
-      percent: 100,
-      status: 'completed',
-    });
+    // 上传成功后流程面板不再展示，进度状态被清空
+    expect(store.uploadProgress).toBe('');
+    expect(store.uploadSteps).toEqual([]);
     expect(store.isUploading).toBe(false);
     expect(store.selectedFile).toBeNull();
     expect(store.uploadPollTimer).toBeNull();

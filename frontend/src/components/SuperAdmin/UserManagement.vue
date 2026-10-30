@@ -52,6 +52,7 @@
               <td class="cell-time">{{ formatTime(u.last_login_at) || '—' }}</td>
               <td class="col-actions">
                 <button class="link-btn" @click="openEdit(u)"><i class="fas fa-edit"></i> 编辑</button>
+                <button class="link-btn" @click="openResetPwd(u)"><i class="fas fa-key"></i> 重置密码</button>
                 <button class="link-btn" :class="u.is_active ? 'danger' : 'success'" @click="onToggle(u)">
                   <i :class="u.is_active ? 'fas fa-ban' : 'fas fa-check'"></i>
                   {{ u.is_active ? '禁用' : '启用' }}
@@ -80,6 +81,28 @@
         </button>
       </div>
     </template>
+
+    <!-- 重置密码弹窗 -->
+    <div v-if="resetTarget" class="modal-mask" @click.self="resetTarget = null">
+      <div class="modal">
+        <h4><i class="fas fa-key"></i> 重置密码：{{ resetTarget.username }}</h4>
+        <label class="field">
+          <span>新密码（至少 6 位）</span>
+          <input v-model="resetPwd" type="password" placeholder="输入新密码" autocomplete="new-password" />
+        </label>
+        <label class="field">
+          <span>确认新密码</span>
+          <input v-model="resetPwdConfirm" type="password" placeholder="再次输入新密码" autocomplete="new-password" />
+        </label>
+        <p v-if="resetTarget.is_locked" class="warn">
+          <i class="fas fa-triangle-exclamation"></i> 该账号当前处于锁定状态，重置密码后将自动解除锁定
+        </p>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="resetTarget = null">取消</button>
+          <button class="btn-primary" :disabled="saving" @click="onResetPwd">{{ saving ? '提交中...' : '确认重置' }}</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 编辑弹窗 -->
     <div v-if="editTarget" class="modal-mask" @click.self="editTarget = null">
@@ -149,6 +172,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useSuperAdminStore, ROLE_LABELS } from '@/stores/superAdmin';
 import { useAuthStore } from '@/stores/auth';
 import type { AdminUserItem, UserRole } from '@/types/user';
+import { formatUtc8 } from '@/utils/time';
 
 const store = useSuperAdminStore();
 const authStore = useAuthStore();
@@ -162,6 +186,9 @@ const editRole = ref<UserRole>('user');
 const editActive = ref(true);
 const showCreate = ref(false);
 const saving = ref(false);
+const resetTarget = ref<AdminUserItem | null>(null);
+const resetPwd = ref('');
+const resetPwdConfirm = ref('');
 const createForm = ref({ username: '', password: '', role: 'user' as UserRole, is_active: true });
 
 const totalPages = computed(() => Math.max(1, Math.ceil(store.usersTotal / store.usersPageSize)));
@@ -171,11 +198,7 @@ const selfEditWarn = computed(
 
 const roleLabel = (role: string) => ROLE_LABELS[role as UserRole] || role;
 
-const formatTime = (iso: string | null) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
+const formatTime = (iso: string | null) => formatUtc8(iso);
 
 const triggerSearch = () => {
   store.setUsersSearch(searchInput.value).catch(() => {});
@@ -242,6 +265,40 @@ const onToggle = async (u: AdminUserItem) => {
 const openCreate = () => {
   createForm.value = { username: '', password: '', role: 'user', is_active: true };
   showCreate.value = true;
+};
+
+const openResetPwd = (u: AdminUserItem) => {
+  resetTarget.value = u;
+  resetPwd.value = '';
+  resetPwdConfirm.value = '';
+};
+
+const onResetPwd = async () => {
+  if (!resetTarget.value) return;
+  const pwd = resetPwd.value.trim();
+  if (!pwd) {
+    alert('新密码不能为空');
+    return;
+  }
+  if (pwd.length < 6) {
+    alert('新密码长度不能少于 6 位');
+    return;
+  }
+  if (pwd !== resetPwdConfirm.value.trim()) {
+    alert('两次输入的密码不一致');
+    return;
+  }
+  if (!confirm(`确定要将用户「${resetTarget.value.username}」的密码重置为该新密码吗？`)) return;
+  saving.value = true;
+  try {
+    const data = await store.resetUserPassword(resetTarget.value.id, { new_password: pwd });
+    alert(data.message || '密码已重置');
+    resetTarget.value = null;
+  } catch (e: any) {
+    alert(e.message);
+  } finally {
+    saving.value = false;
+  }
 };
 
 const onCreate = async () => {

@@ -100,6 +100,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_chat_message_columns()
     _ensure_user_columns()
+    _ensure_utc8_timezone_migration()
 
 
 def _ensure_chat_message_columns() -> None:
@@ -123,8 +124,9 @@ def _ensure_user_columns() -> None:
         "is_active BOOLEAN NOT NULL DEFAULT TRUE",
         "is_locked BOOLEAN NOT NULL DEFAULT FALSE",
         "failed_login_attempts INTEGER NOT NULL DEFAULT 0",
+        # 注意：东八区朴素时间落库，故默认偏移量设为 +8 小时，与 now_for_db() 保持一致。
         "locked_until TIMESTAMP",
-        "updated_at TIMESTAMP NOT NULL DEFAULT now()",
+        "updated_at TIMESTAMP NOT NULL DEFAULT (now() + INTERVAL '8 hours')",
         "last_login_at TIMESTAMP",
     ]
     try:
@@ -136,3 +138,48 @@ def _ensure_user_columns() -> None:
                 )
     except Exception as exc:
         print(f"users 锁定/禁用相关列迁移失败（可手动执行 ALTER TABLE 补齐）: {exc}")
+
+
+def _ensure_utc8_timezone_migration() -> None:
+    """一次性把存量 UTC 时间戳整体东移 8 小时，使全库时间统一以东八区（UTC+8）为基准。
+
+    早期版本以 UTC 朴素时间落库，与新版「东八区朴素时间」约定不一致。本迁移对每个时间列执行
+    ``+ INTERVAL '8 hours'`` 将物理存储值校正为北京时间，仅执行一次（由 ``schema_flags``
+    标记保护），天然幂等；此后新写入的数据已由 ``now_for_db()`` 直接以东八区落库，无需再次迁移。
+    """
+    from sqlalchemy import text
+
+    tables = {
+        "users": ["created_at", "updated_at", "last_login_at", "locked_until"],
+        "chat_sessions": ["created_at", "updated_at"],
+        "chat_messages": ["timestamp"],
+        "chat_attachments": ["created_at"],
+        "parent_chunks": ["updated_at"],
+        "audit_logs": ["created_at"],
+    }
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("CREATE TABLE IF NOT EXISTS schema_flags (key TEXT PRIMARY KEY, value TEXT)")
+            )
+            already = conn.execute(
+                text("SELECT 1 FROM schema_flags WHERE key = 'utc8_migrated'")
+            ).scalar()
+            if already:
+                return
+            for table, cols in tables.items():
+                for col in cols:
+                    conn.execute(
+                        text(
+                            f"UPDATE {table} "
+                            f"SET {col} = {col} + INTERVAL '8 hours' "
+                            f"WHERE {col} IS NOT NULL"
+                        )
+                    )
+            conn.execute(
+                text("INSERT INTO schema_flags (key, value) VALUES ('utc8_migrated', '1')")
+            )
+        print("[migration] 存量时间已统一迁移至东八区（UTC+8）基准。")
+    except Exception as exc:
+        # 迁移失败不应阻断启动；新数据仍以东八区落库，仅存量记录可能保持 UTC。
+        print(f"[migration] 东八区时间迁移跳过（不影响新数据写入）: {exc}")

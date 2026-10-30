@@ -23,6 +23,7 @@ dependencies = [
     "langgraph>=0.2.31",
     "pypdf>=4.3.1",
     "docx2txt>=0.8",
+    "olefile>=0.13",
     "unstructured",
     "openpyxl",
     "tabulate",

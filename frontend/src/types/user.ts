@@ -84,6 +84,16 @@ export interface ToggleActiveResponse {
   message: string;
 }
 
+export interface ResetPasswordRequest {
+  new_password: string;
+}
+
+export interface ResetPasswordResponse {
+  id: number;
+  username: string;
+  message: string;
+}
+
 // ----------------------------- 安全审计（Audit Log） -----------------------------
 
 export interface AuditLogItem {

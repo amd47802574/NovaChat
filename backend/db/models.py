@@ -4,6 +4,7 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.infra.database import Base
+from backend.infra.timezone import now_for_db
 
 
 class User(Base):
@@ -13,10 +14,11 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    # 资料更新时间（角色/状态变更时刷新），供超级管理员后台展示与审计
+    # 资料创建时间，以东八区（UTC+8）为基准落库
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_for_db, nullable=False)
+    # 资料更新时间（角色/状态变更时刷新），供超级管理员后台展示与审计；以东八区为基准
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime, default=now_for_db, onupdate=now_for_db, nullable=False
     )
     # 最近一次成功登录时间，供数据面板统计活跃度
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -27,7 +29,7 @@ class User(Base):
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # 连续登录失败次数，成功后清零；达到阈值则触发临时锁定
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # 临时锁定的到期时间（UTC 朴素时间）；为空表示未设置临时锁定
+    # 临时锁定的到期时间（以东八区朴素时间存储）；为空表示未设置临时锁定
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
@@ -41,8 +43,8 @@ class ChatSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     session_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_for_db, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_for_db, nullable=False)
 
     user = relationship("User", back_populates="sessions")
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
@@ -55,7 +57,7 @@ class ChatMessage(Base):
     session_ref_id: Mapped[int] = mapped_column(ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     message_type: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=now_for_db, nullable=False)
     rag_trace: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # 用户消息携带的聊天附件元数据列表（[{id, filename, kind, mime}]），AI 消息为空
     attachments: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -80,7 +82,7 @@ class ChatAttachment(Base):
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 是否已被某条聊天消息引用；未被引用的过期附件可安全清理
     used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_for_db, nullable=False)
 
 
 class ParentChunk(Base):
@@ -96,7 +98,7 @@ class ParentChunk(Base):
     root_chunk_id: Mapped[str] = mapped_column(String(512), default="", nullable=False)
     chunk_level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     chunk_idx: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_for_db, nullable=False)
 
 
 class AuditLog(Base):
@@ -120,4 +122,4 @@ class AuditLog(Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 来源 IP，用于异地登录与异常操作溯源
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_for_db, index=True, nullable=False)
