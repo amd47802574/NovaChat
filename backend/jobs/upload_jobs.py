@@ -6,10 +6,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import UTC, datetime
 from threading import Lock
 from typing import Literal
 from uuid import uuid4
+
+from backend.infra.timezone import now_utc8
 
 
 StepStatus = Literal["pending", "running", "completed", "failed"]
@@ -33,7 +34,7 @@ DELETE_STEPS = [
 
 
 def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
+    return now_utc8().isoformat()
 
 
 class UploadJobManager:

@@ -71,6 +71,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useSuperAdminStore, ROLE_LABELS } from '@/stores/superAdmin';
 import type { UserRole } from '@/types/user';
+import { formatUtc8 } from '@/utils/time';
 
 const store = useSuperAdminStore();
 const searchInput = ref('');
@@ -95,11 +96,7 @@ const actionLabel = (action: string) => {
   return action;
 };
 
-const formatTime = (iso: string | null) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
+const formatTime = (iso: string | null) => formatUtc8(iso);
 
 const onFilter = () => store.setAuditFilter(actionFilter.value, searchInput.value);
 

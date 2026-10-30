@@ -80,6 +80,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import { useSuperAdminStore } from '@/stores/superAdmin';
 import type { ModelConfigField, UpdateModelConfigRequest } from '@/types/user';
+import { formatUtc8 } from '@/utils/time';
 
 const store = useSuperAdminStore();
 
@@ -111,12 +112,7 @@ const clearError = (key: string) => {
   if (errors[key]) errors[key] = '';
 };
 
-const formatTime = (iso: string) => {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-};
+const formatTime = (iso: string) => formatUtc8(iso, { withSeconds: true });
 
 const hydrateForm = () => {
   for (const f of store.modelConfig) {

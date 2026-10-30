@@ -1,4 +1,3 @@
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -14,6 +13,7 @@ from backend.infra.auth import (
     get_password_hash,
     resolve_role,
 )
+from backend.infra.timezone import now_for_db
 from backend.schemas import AuthResponse, CurrentUserResponse, LoginRequest, RegisterRequest
 
 router = APIRouter(tags=["auth"])
@@ -68,7 +68,7 @@ async def login(request: LoginRequest, http_request: Request, db: Session = Depe
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
     # 记录最近登录时间（用于数据面板活跃度统计），失败计数由 authenticate_user 清零
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = now_for_db()
     db.commit()
 
     write_audit_log(

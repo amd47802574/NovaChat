@@ -27,18 +27,11 @@
 
 <script setup lang="ts">
 import type { Message } from '@/types/chat';
+import { formatUtc8Time } from '@/utils/time';
 
 defineProps<{
   msg: Message;
 }>();
 
-const formatTime = (iso: string) => {
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleTimeString('zh-CN', { hour12: false });
-  } catch {
-    return '';
-  }
-};
+const formatTime = (iso: string) => formatUtc8Time(iso);
 </script>

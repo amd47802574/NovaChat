@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.infra.database import SessionLocal, get_db
 from backend.db.models import User
+from backend.infra.timezone import now_for_db
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -119,7 +120,7 @@ def authenticate_user(db: Session, username: str, password: str) -> User:
     if not user:
         raise LoginError("用户名不存在")
 
-    now = datetime.utcnow()
+    now = now_for_db()
 
     # 临时锁定已到期：自动解除并清零失败计数，允许用户继续尝试
     if user.locked_until and user.locked_until <= now:

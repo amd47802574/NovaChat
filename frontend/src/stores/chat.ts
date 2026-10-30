@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { useAuthStore } from './auth';
 import { useSessionStore } from './sessions';
 import api from '@/utils/api';
+import { nowUtc8Iso } from '@/utils/time';
 import type { Message, RagStep, GroupedRagStep, HitlRequest, RagTrace, MessageAttachment } from '@/types/chat';
 
 const LAST_SESSION_ID_STORAGE_KEY = 'novaLastSessionId';
@@ -275,7 +276,7 @@ export const useChatStore = defineStore('chat', {
           session_id: sessionId,
           title: existing?.title || this.getLocalSessionTitle(sessionId, messages),
           message_count: Math.max(existing?.message_count || 0, messages.length),
-          updated_at: existing?.updated_at || new Date().toISOString(),
+          updated_at: existing?.updated_at || nowUtc8Iso(),
           isStreaming: this.isLoading && sessionId === this.streamingSessionId,
         };
 
@@ -470,14 +471,14 @@ export const useChatStore = defineStore('chat', {
         if (existingSession) {
           existingSession.title = existingSession.title || tempTitle;
           existingSession.message_count = requestMessages.length;
-          existingSession.updated_at = new Date().toISOString();
+          existingSession.updated_at = nowUtc8Iso();
           existingSession.isStreaming = true;
         } else {
           sessionStore.sessions.unshift({
             session_id: requestSessionId,
             title: tempTitle,
             message_count: requestMessages.length,
-            updated_at: new Date().toISOString(),
+            updated_at: nowUtc8Iso(),
             isStreaming: true,
           });
         }
@@ -617,7 +618,7 @@ export const useChatStore = defineStore('chat', {
                   msg.toolCalls.push({
                     tool_name: toolName,
                     call_id: callId || undefined,
-                    started_at: new Date().toISOString(),
+                    started_at: nowUtc8Iso(),
                   });
                 } else if (data.type === 'session_title') {
                   const s = sessionStore.sessions.find(
@@ -625,7 +626,7 @@ export const useChatStore = defineStore('chat', {
                   );
                   if (s) {
                     s.title = data.title;
-                    s.updated_at = new Date().toISOString();
+                    s.updated_at = nowUtc8Iso();
                     s.message_count = requestMessages.length;
                     s.isStreaming = data.session_id === this.streamingSessionId;
                   } else {
@@ -633,7 +634,7 @@ export const useChatStore = defineStore('chat', {
                       session_id: data.session_id,
                       title: data.title,
                       message_count: requestMessages.length,
-                      updated_at: new Date().toISOString(),
+                      updated_at: nowUtc8Iso(),
                       isStreaming: data.session_id === this.streamingSessionId,
                     });
                   }

@@ -147,6 +147,13 @@ export const useDocumentStore = defineStore('documents', {
 
     syncUploadJob(job: any) {
       this.activeUploadJobId = job.job_id;
+      // 上传成功后不再展示流程面板，直接清空进度状态
+      if (job.status === 'completed') {
+        this.uploadSteps = [];
+        this.uploadProgress = '';
+        this.uploadProgressCollapsed = false;
+        return;
+      }
       this.uploadProgress = job.message || '';
       if (Array.isArray(job.steps)) {
         this.uploadSteps = job.steps.map((step: any) => ({
@@ -156,9 +163,6 @@ export const useDocumentStore = defineStore('documents', {
           status: step.status,
           message: step.message || '',
         }));
-      }
-      if (job.status === 'completed') {
-        this.uploadProgressCollapsed = true;
       }
     },
 

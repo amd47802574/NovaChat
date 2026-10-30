@@ -13,12 +13,13 @@ import os
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 from backend.db.models import ChatAttachment, User
 from backend.indexing.document_loader import sanitize_text
 from backend.infra.database import SessionLocal
+from backend.infra.timezone import now_for_db
 
 # 图片扩展名：以 OpenAI 兼容的 image_url(data URL) 形式发给多模态模型
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
@@ -300,7 +301,7 @@ def build_rag_steps(contents: list[AttachmentContent]) -> list[dict]:
 
 def prune_stale_attachments() -> int:
     """删除超过保留期仍未被任何消息引用的附件（含磁盘文件），避免上传后弃用造成堆积。"""
-    deadline = datetime.utcnow() - STALE_UNUSED_TTL
+    deadline = now_for_db() - STALE_UNUSED_TTL
     db = SessionLocal()
     try:
         stale_rows = (

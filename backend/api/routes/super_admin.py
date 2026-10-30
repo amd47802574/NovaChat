@@ -9,7 +9,7 @@
 - 前端通过侧边栏「超级管理后台」入口（仅 super_admin 可见）进入，URL 以 ?view=sa 标记；
   后端接口统一以 /super-admin 前缀挂载，避免与 /documents 等 admin 接口混淆。
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from backend.db.models import AuditLog, ChatMessage, ChatSession, User
 from backend.infra.audit import write_audit_log
 from backend.infra.auth import get_client_ip, get_db, get_password_hash, require_super_admin
+from backend.infra.timezone import now_utc8, to_utc8_iso
 from backend.schemas import (
     AdminUserDetail,
     AdminUserItem,
@@ -26,6 +27,8 @@ from backend.schemas import (
     AuditLogResponse,
     CreateUserRequest,
     DashboardMetrics,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     RoleCount,
     ToggleActiveResponse,
     TrendPoint,
@@ -40,7 +43,7 @@ router = APIRouter(prefix="/super-admin", tags=["super-admin"])
 
 
 def _iso(dt) -> str | None:
-    return dt.isoformat() if dt else None
+    return to_utc8_iso(dt)
 
 
 def _to_admin_item(user: User) -> AdminUserItem:
@@ -57,7 +60,7 @@ def _to_admin_item(user: User) -> AdminUserItem:
 
 
 def _last_n_days(n: int):
-    today = datetime.utcnow().date()
+    today = now_utc8().date()
     return [today - timedelta(days=i) for i in range(n - 1, -1, -1)]
 
 
@@ -133,7 +136,7 @@ def get_metrics(_: User = Depends(require_super_admin), db: Session = Depends(ge
             registrations_last_7_days=_trend(reg_rows, days),
             logins_last_7_days=_trend(login_rows, days),
             role_distribution=[RoleCount(role=r, count=c) for r, c in role_rows],
-            generated_at=datetime.utcnow().isoformat(),
+            generated_at=now_utc8().isoformat(),
         )
     except HTTPException:
         raise
@@ -326,6 +329,57 @@ def toggle_active(
         username=user.username,
         is_active=user.is_active,
         message=f"用户 {user.username} 已{'禁用' if not user.is_active else '启用'}",
+    )
+
+
+@router.post("/users/{user_id}/reset-password", response_model=ResetPasswordResponse)
+def reset_password(
+    user_id: int,
+    payload: ResetPasswordRequest,
+    http_request: Request,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """超级管理员重置任意用户（含自身与其他超级管理员）的密码。
+
+    附带效果：重置成功后清除该账号的登录失败计数与临时锁定，
+    使「忘记密码 + 被锁定」的用户可直接通过重置恢复访问。
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    new_password = (payload.new_password or "").strip()
+    if not new_password:
+        raise HTTPException(status_code=400, detail="新密码不能为空")
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="新密码长度不能少于 6 位")
+
+    user.password_hash = get_password_hash(new_password)
+    # 清除锁定状态：重置密码即视为一次可信的身份恢复操作
+    unlocked = bool(user.is_locked or user.locked_until or user.failed_login_attempts)
+    user.is_locked = False
+    user.locked_until = None
+    user.failed_login_attempts = 0
+    db.commit()
+
+    detail = f"重置用户 {user.username} 的密码"
+    if unlocked:
+        detail += "，并解除登录锁定"
+    write_audit_log(
+        db,
+        actor=current_user.username,
+        action="user_reset_password",
+        target_type="user",
+        target_id=user.id,
+        detail=detail,
+        ip=get_client_ip(http_request),
+    )
+    return ResetPasswordResponse(
+        id=user.id,
+        username=user.username,
+        message=f"已重置用户 {user.username} 的密码"
+        + ("，账号锁定已解除" if unlocked else ""),
     )
 
 

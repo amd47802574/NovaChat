@@ -1,7 +1,8 @@
 import asyncio
 import json
-from datetime import datetime, timezone
 from uuid import uuid4
+
+from backend.infra.timezone import now_utc8
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 
@@ -94,7 +95,7 @@ def _build_pending_hitl(
         "answers": previous_answers or [],
         "rag_trace": rag_trace,
         "resume_state": resume_state,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": now_utc8().isoformat(),
     }
 
 

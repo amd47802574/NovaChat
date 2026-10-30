@@ -77,7 +77,7 @@ const onFileSelect = (event: Event) => {
     }
     documentStore.selectedFile = file;
     documentStore.uploadProgress = '';
-    documentStore.uploadSteps = documentStore.createUploadSteps();
+    documentStore.uploadSteps = [];
     documentStore.uploadProgressCollapsed = false;
     documentStore.activeUploadJobId = '';
   }

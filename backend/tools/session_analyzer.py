@@ -38,6 +38,7 @@ from langchain_core.tools import tool
 from backend.chat.request_context import ChatRequestContext
 from backend.db.models import ChatMessage, ChatSession, User
 from backend.infra.database import SessionLocal
+from backend.infra.timezone import as_utc8
 
 # ---------------------------------------------------------------------------
 # 作用域 / 隔离相关的对外提示（带前缀，便于模型与调用方识别边界状态）
@@ -159,7 +160,7 @@ def _build_result(messages, analysis_type: str, scope_line: str) -> str:
             f"- 用户消息：{len(user_messages)} 条\n"
             f"- AI回复：{len(ai_messages)} 条\n"
             f"时间跨度：{time_span.days} 天 {time_span.seconds // 3600} 小时\n"
-            f"分析时段：{oldest_msg.timestamp.strftime('%Y-%m-%d %H:%M')} 至 {newest_msg.timestamp.strftime('%Y-%m-%d %H:%M')}\n"
+            f"分析时段：{as_utc8(oldest_msg.timestamp).strftime('%Y-%m-%d %H:%M')} 至 {as_utc8(newest_msg.timestamp).strftime('%Y-%m-%d %H:%M')}\n"
             f"热门关键词：{', '.join(top_keywords[:5]) if top_keywords else '无'}"
         )
 
@@ -181,7 +182,7 @@ def _build_result(messages, analysis_type: str, scope_line: str) -> str:
         if message_count == 0:
             result += "（当前会话暂无消息）"
         for i, msg in enumerate(messages[:10], 1):
-            time_str = msg.timestamp.strftime('%Y-%m-%d %H:%M')
+            time_str = as_utc8(msg.timestamp).strftime('%Y-%m-%d %H:%M')
             role = "用户" if msg.message_type == 'human' else "AI"
             preview = msg.content[:30] + '...' if len(msg.content) > 30 else msg.content
             result += f"{i}. [{time_str}] {role}: {preview}\n"

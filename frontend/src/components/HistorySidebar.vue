@@ -162,6 +162,7 @@ import { computed, ref } from 'vue';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
 import { useSessionStore } from '@/stores/sessions';
+import { formatUtc8Smart } from '@/utils/time';
 
 const authStore = useAuthStore();
 const chatStore = useChatStore();
@@ -250,14 +251,7 @@ const onBatchDelete = async () => {
   }
 };
 
-const formatTime = (value: string) => {
-  const date = new Date(value);
-  const now = new Date();
-  if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  }
-  return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
-};
+const formatTime = (value: string) => formatUtc8Smart(value);
 
 const toggleMenu = (sessionId: string) => {
   swipedSessionId.value = null;

@@ -1,22 +1,21 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from backend.db.models import ChatMessage, ChatSession, User
 from backend.infra.cache import cache
 from backend.infra.database import SessionLocal
+from backend.infra.timezone import now_for_db, to_utc8_iso
 
 
 def _isoformat_utc(dt: datetime) -> str:
-    """把时间戳序列化为带 UTC 时区标记的 ISO 字符串。
+    """把时间戳序列化为东八区（UTC+8）ISO 字符串（含 +08:00 偏移）。
 
-    数据库里的时间以 naive UTC 存储（datetime.utcnow），直接 isoformat()
-    会丢失时区标记，前端 new Date() 会按本地时区解析，东8区因此少算 8 小时。
-    这里统一补上 UTC 标记，让前端正确按本地时区展示。
+    数据库时间统一以「东八区朴素时间」存储，直接 isoformat() 会丢失时区标记，
+    前端 new Date() 将按浏览器本地时区解析而产生偏差。这里统一补上 +08:00 偏移，
+    使前端在任何时区下都能显式按东八区展示。
     """
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.isoformat()
+    return to_utc8_iso(dt)
 
 
 class ConversationStorage:
@@ -84,7 +83,7 @@ class ConversationStorage:
             db.query(ChatMessage).filter(ChatMessage.session_ref_id == session.id).delete(synchronize_session=False)
 
             serialized = []
-            now = datetime.utcnow()
+            now = now_for_db()
             for idx, msg in enumerate(messages):
                 rag_trace = None
                 attachments = None
@@ -273,7 +272,7 @@ class ConversationStorage:
             metadata = dict(session.metadata_json or {})
             metadata.update(updates)
             session.metadata_json = metadata
-            session.updated_at = datetime.utcnow()
+            session.updated_at = now_for_db()
             db.commit()
             cache.delete(self._sessions_cache_key(user_id))
             return {

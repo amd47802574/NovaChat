@@ -226,7 +226,7 @@ def apply_model_config() -> None:
     即使某个模型构建失败也不影响其余配置落地。
     """
     global _last_applied_at
-    from datetime import datetime
+    from backend.infra.timezone import now_utc8
 
     from langchain.chat_models import init_chat_model
 
@@ -292,7 +292,7 @@ def apply_model_config() -> None:
     text_analyzer_mod.FAST_MODEL = fast_model
     text_analyzer_mod.BASE_URL = base_url
 
-    _last_applied_at = datetime.utcnow().isoformat()
+    _last_applied_at = now_utc8().isoformat()
 
 
 def get_last_applied_at() -> str | None:

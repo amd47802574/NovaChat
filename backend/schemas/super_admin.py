@@ -89,6 +89,17 @@ class ToggleActiveResponse(BaseModel):
     message: str
 
 
+class ResetPasswordRequest(BaseModel):
+    # 新密码：至少 6 位；重置后同时清除该账号的登录锁定状态
+    new_password: str
+
+
+class ResetPasswordResponse(BaseModel):
+    id: int
+    username: str
+    message: str
+
+
 # ----------------------------- 安全审计（Audit Log） -----------------------------
 
 
