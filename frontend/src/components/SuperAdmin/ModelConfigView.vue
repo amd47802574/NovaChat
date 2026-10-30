@@ -269,9 +269,18 @@ onMounted(() => {
 }
 .btn-secondary,
 .btn-primary {
-  border: none;
+  margin: 0;
+  border: 1px solid transparent;
   border-radius: 14px;
-  padding: 8px 16px;
+  padding: 8px 22px;
+  min-width: 88px;
+  min-height: 38px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1.2;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -279,13 +288,21 @@ onMounted(() => {
 .btn-secondary {
   background: var(--white);
   color: var(--primary-color);
-  border: 1px solid var(--border-color, #e3eaf3);
+  border-color: var(--border-color, #e3eaf3);
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.08);
+}
+.btn-secondary:hover {
+  background: #f0f6ff;
+  transform: none;
 }
 .btn-primary {
   background: var(--primary-color);
   color: #fff;
   box-shadow: var(--shadow);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-color);
+  transform: none;
 }
 .btn-secondary:disabled,
 .btn-primary:disabled {

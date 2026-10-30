@@ -59,6 +59,9 @@ import { useDocumentStore } from '@/stores/documents';
 const documentStore = useDocumentStore();
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
+// 与后端 MAX_DOCUMENT_SIZE_MB 保持一致（backend/api/resources.py）
+const MAX_DOCUMENT_SIZE_MB = 30;
+
 const triggerFileSelect = () => {
   fileInputRef.value?.click();
 };
@@ -66,7 +69,13 @@ const triggerFileSelect = () => {
 const onFileSelect = (event: Event) => {
   const files = (event.target as HTMLInputElement).files;
   if (files && files.length > 0) {
-    documentStore.selectedFile = files[0];
+    const file = files[0];
+    if (file.size > MAX_DOCUMENT_SIZE_MB * 1024 * 1024) {
+      alert(`文件过大：${(file.size / 1024 / 1024).toFixed(1)}MB，最大支持 ${MAX_DOCUMENT_SIZE_MB}MB`);
+      (event.target as HTMLInputElement).value = '';
+      return;
+    }
+    documentStore.selectedFile = file;
     documentStore.uploadProgress = '';
     documentStore.uploadSteps = documentStore.createUploadSteps();
     documentStore.uploadProgressCollapsed = false;

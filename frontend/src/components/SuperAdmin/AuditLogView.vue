@@ -126,6 +126,7 @@ onMounted(() => {
 }
 .toolbar {
   display: flex;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -135,6 +136,8 @@ onMounted(() => {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 14px;
   padding: 8px 12px;
+  min-height: 38px;
+  box-sizing: border-box;
   background: var(--white);
   color: var(--text-color);
   box-shadow: var(--shadow);
@@ -144,6 +147,8 @@ onMounted(() => {
   align-items: center;
   flex: 1 1 200px;
   min-width: 0;
+  min-height: 38px;
+  box-sizing: border-box;
   background: var(--white);
   border-radius: 14px;
   padding: 8px 12px;
@@ -159,14 +164,28 @@ onMounted(() => {
   color: var(--text-color);
 }
 .btn-secondary {
+  margin: 0;
   border: 1px solid var(--border-color, #e3eaf3);
   background: var(--white);
   color: var(--primary-color);
   border-radius: 14px;
-  padding: 8px 14px;
+  padding: 8px 22px;
+  min-width: 88px;
+  min-height: 38px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1.2;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.08);
+}
+.btn-secondary:hover {
+  background: #f0f6ff;
+  transform: none;
 }
 .table-wrap {
   max-width: 100%;
@@ -179,8 +198,21 @@ onMounted(() => {
 }
 .audit-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.88rem;
+}
+.audit-table th:nth-child(1) {
+  width: 165px;
+}
+.audit-table th:nth-child(3) {
+  width: 150px;
+}
+.audit-table th:nth-child(4) {
+  width: 130px;
+}
+.audit-table th:nth-child(6) {
+  width: 140px;
 }
 .audit-table th,
 .audit-table td {
@@ -188,6 +220,8 @@ onMounted(() => {
   text-align: left;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .audit-table th {
   color: var(--text-light);
@@ -201,7 +235,10 @@ onMounted(() => {
 }
 .cell-detail {
   white-space: normal;
-  max-width: 320px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow: hidden;
+  text-overflow: unset;
   color: var(--text-color);
 }
 .role-badge {
@@ -277,12 +314,21 @@ onMounted(() => {
   .search-box {
     flex: 1 1 100%;
   }
+  .audit-table th:nth-child(1) {
+    width: 140px;
+  }
+  .audit-table th:nth-child(3) {
+    width: 110px;
+  }
+  .audit-table th:nth-child(4) {
+    width: 100px;
+  }
+  .audit-table th:nth-child(6) {
+    width: 120px;
+  }
   .audit-table th,
   .audit-table td {
     padding: 10px 12px;
-  }
-  .cell-detail {
-    max-width: 60vw;
   }
 }
 </style>

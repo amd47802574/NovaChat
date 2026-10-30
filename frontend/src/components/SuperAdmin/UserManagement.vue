@@ -8,11 +8,16 @@
           <input
             v-model="searchInput"
             type="text"
-            placeholder="按用户名检索"
-            @keyup.enter="onSearch"
+            placeholder="按用户名检索（输入即搜）"
+            @input="onInput"
+            @compositionstart="composing = true"
+            @compositionend="onCompositionEnd"
           />
+          <button v-if="searchInput" class="clear-btn" title="清空检索" @click="clearSearch">
+            <i class="fas fa-circle-xmark"></i>
+          </button>
+          <i v-if="store.usersLoading" class="fas fa-spinner fa-spin search-spin"></i>
         </div>
-        <button class="btn-secondary" @click="onSearch"><i class="fas fa-search"></i> 检索</button>
         <button class="btn-primary" @click="openCreate"><i class="fas fa-user-plus"></i> 新建用户</button>
       </div>
     </div>
@@ -68,8 +73,11 @@
       </div>
 
       <div v-else class="empty-box">
-        <i class="fas fa-user-slash"></i>
-        <p>没有匹配的用户</p>
+        <i :class="store.usersError ? 'fas fa-plug-circle-exclamation' : 'fas fa-user-slash'"></i>
+        <p>{{ store.usersError ? '检索失败，请检查网络后重试' : `没有匹配「${store.usersSearch.trim()}」的用户` }}</p>
+        <button v-if="store.usersError" class="btn-secondary retry-btn" @click="triggerSearch">
+          <i class="fas fa-rotate-right"></i> 重试
+        </button>
       </div>
     </template>
 
@@ -137,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useSuperAdminStore, ROLE_LABELS } from '@/stores/superAdmin';
 import { useAuthStore } from '@/stores/auth';
 import type { AdminUserItem, UserRole } from '@/types/user';
@@ -145,7 +153,10 @@ import type { AdminUserItem, UserRole } from '@/types/user';
 const store = useSuperAdminStore();
 const authStore = useAuthStore();
 
+const SEARCH_DEBOUNCE_MS = 300;
 const searchInput = ref('');
+const composing = ref(false);
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 const editTarget = ref<AdminUserItem | null>(null);
 const editRole = ref<UserRole>('user');
 const editActive = ref(true);
@@ -166,7 +177,30 @@ const formatTime = (iso: string | null) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-const onSearch = () => store.setUsersSearch(searchInput.value);
+const triggerSearch = () => {
+  store.setUsersSearch(searchInput.value).catch(() => {});
+};
+
+const onInput = () => {
+  if (composing.value) return;
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(triggerSearch, SEARCH_DEBOUNCE_MS);
+};
+
+const onCompositionEnd = () => {
+  composing.value = false;
+  onInput();
+};
+
+const clearSearch = () => {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  searchInput.value = '';
+  triggerSearch();
+};
+
+onBeforeUnmount(() => {
+  if (debounceTimer) clearTimeout(debounceTimer);
+});
 
 const openEdit = (u: AdminUserItem) => {
   editTarget.value = u;
@@ -269,24 +303,58 @@ onMounted(() => {
   width: 100%;
   min-width: 0;
 }
+.clear-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-light);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.95rem;
+}
+.clear-btn:hover {
+  color: var(--text-color);
+}
+.search-spin {
+  color: var(--primary-color);
+  font-size: 0.85rem;
+}
+.retry-btn {
+  margin-top: 12px;
+}
 .btn-secondary,
 .btn-primary {
-  border: none;
+  margin: 0;
+  border: 1px solid transparent;
   border-radius: 14px;
-  padding: 8px 14px;
+  padding: 8px 22px;
+  min-width: 88px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
   font-weight: 600;
   cursor: pointer;
+  box-sizing: border-box;
 }
 .btn-secondary {
   background: var(--white);
   color: var(--primary-color);
-  border: 1px solid var(--border-color, #e3eaf3);
+  border-color: var(--border-color, #e3eaf3);
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.08);
+}
+.btn-secondary:hover {
+  background: #f0f6ff;
+  transform: none;
 }
 .btn-primary {
   background: var(--primary-color);
   color: #fff;
   box-shadow: var(--shadow);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-color);
+  transform: none;
 }
 .table-wrap {
   max-width: 100%;
@@ -466,7 +534,6 @@ onMounted(() => {
   .search-box {
     flex: 1 1 100%;
   }
-  .toolbar .btn-secondary,
   .toolbar .btn-primary {
     flex: 1 1 auto;
   }

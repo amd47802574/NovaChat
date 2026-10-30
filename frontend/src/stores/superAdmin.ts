@@ -30,6 +30,8 @@ export const useSuperAdminStore = defineStore('superAdmin', {
     usersPageSize: 20,
     usersSearch: '',
     usersLoading: false,
+    usersFetchSeq: 0,
+    usersError: '' as string,
     // 安全审计
     auditLogs: [] as AuditLogItem[],
     auditTotal: 0,
@@ -60,7 +62,9 @@ export const useSuperAdminStore = defineStore('superAdmin', {
 
     // --------------------------- 用户管理 ---------------------------
     async fetchUsers() {
+      const seq = ++this.usersFetchSeq;
       this.usersLoading = true;
+      this.usersError = '';
       try {
         const params: Record<string, any> = {
           page: this.usersPage,
@@ -68,12 +72,15 @@ export const useSuperAdminStore = defineStore('superAdmin', {
         };
         if (this.usersSearch.trim()) params.q = this.usersSearch.trim();
         const { data } = await api.get('/super-admin/users', { params });
+        if (seq !== this.usersFetchSeq) return;
         this.users = data.users;
         this.usersTotal = data.total;
-      } catch (error) {
+      } catch (error: any) {
+        if (seq !== this.usersFetchSeq) return;
+        this.usersError = error?.response?.data?.detail || error?.message || '网络异常，请稍后重试';
         handleError(error);
       } finally {
-        this.usersLoading = false;
+        if (seq === this.usersFetchSeq) this.usersLoading = false;
       }
     },
 

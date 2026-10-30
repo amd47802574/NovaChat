@@ -141,6 +141,7 @@ async def upload_document_async(
     _: User = Depends(require_admin),
 ):
     from backend.api.resources import (
+        MAX_DOCUMENT_SIZE_BYTES,
         UPLOAD_DIR,
         ensure_upload_dir,
         is_supported_document,
@@ -159,7 +160,7 @@ async def upload_document_async(
 
     try:
         upload_job_manager.update_step(job["job_id"], "upload", 1, "running", "正在保存文件到服务器")
-        await save_upload_file(file, file_path)
+        await save_upload_file(file, file_path, max_bytes=MAX_DOCUMENT_SIZE_BYTES)
         upload_job_manager.complete_step(job["job_id"], "upload", "文件已上传，等待后台处理")
     except Exception as e:
         upload_job_manager.fail_job(job["job_id"], "upload", f"文件保存失败: {e}")
@@ -199,6 +200,7 @@ async def get_delete_job(job_id: str, _: User = Depends(require_admin)):
 @router.post("/documents/upload", response_model=DocumentUploadResponse)
 async def upload_document(file: UploadFile = File(...), _: User = Depends(require_admin)):
     from backend.api.resources import (
+        MAX_DOCUMENT_SIZE_BYTES,
         UPLOAD_DIR,
         delete_document_transactionally,
         ensure_upload_dir,
@@ -206,6 +208,7 @@ async def upload_document(file: UploadFile = File(...), _: User = Depends(requir
         loader,
         milvus_writer,
         parent_chunk_store,
+        save_upload_file,
     )
 
     try:
@@ -221,9 +224,7 @@ async def upload_document(file: UploadFile = File(...), _: User = Depends(requir
         delete_document_transactionally(filename)
 
         file_path = UPLOAD_DIR / filename
-        with open(file_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
+        await save_upload_file(file, file_path, max_bytes=MAX_DOCUMENT_SIZE_BYTES)
 
         try:
             new_docs = loader.load_document(str(file_path), filename)

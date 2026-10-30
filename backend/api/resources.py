@@ -15,6 +15,11 @@ UPLOAD_DIR = DATA_DIR / "documents"
 # 聊天附件（图片/文档）存储目录，与知识库文档目录分开管理
 CHAT_UPLOAD_DIR = DATA_DIR / "chat_uploads"
 
+# 知识库文档大小上限：服务器内存有限（2c2g），大文件在解析/向量化阶段内存放大明显，
+# 限制单文件大小以防止 OOM 和磁盘被恶意占满。知识库场景极少有超过 30MB 的文档。
+MAX_DOCUMENT_SIZE_MB = 30
+MAX_DOCUMENT_SIZE_BYTES = MAX_DOCUMENT_SIZE_MB * 1024 * 1024
+
 loader = DocumentLoader()
 parent_chunk_store = ParentChunkStore()
 milvus_manager = get_milvus_store()
@@ -80,13 +85,28 @@ def is_supported_document(filename: str) -> bool:
     )
 
 
-async def save_upload_file(file, file_path: Path) -> None:
-    with open(file_path, "wb") as f:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
+async def save_upload_file(file, file_path: Path, max_bytes: int = MAX_DOCUMENT_SIZE_BYTES) -> None:
+    """分块落盘并强制大小上限，超限抛出 HTTPException(413)。"""
+    size = 0
+    try:
+        with open(file_path, "wb") as f:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"文件过大，最大支持 {max_bytes // (1024 * 1024)}MB",
+                    )
+                f.write(chunk)
+    except HTTPException:
+        file_path.unlink(missing_ok=True)
+        raise
+    except Exception:
+        file_path.unlink(missing_ok=True)
+        raise
 
 
 def ensure_upload_dir() -> None:
