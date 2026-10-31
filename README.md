@@ -1,3 +1,5 @@
+<div align="center">
+
 # ✨ NovaChat（星智问答）
 
 **基于 Corrective RAG 的智能知识问答平台**
@@ -6,27 +8,19 @@
 
 [在线体验](http://novachat.top) · [快速开始](#-快速开始) · [功能特性](#-核心特性) · [架构设计](#-整体架构) · [参与贡献](#-贡献)
 
-![Stars](https://img.shields.io/badge/Stars-Welcome%20%E2%98%85-yellow)
-
-![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python\&logoColor=white)
-
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi\&logoColor=white)
-
-![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs\&logoColor=white)
-
-![Milvus](https://img.shields.io/badge/Milvus-2.5%2B-00A1EA?logo=milvus\&logoColor=white)
-
-![License](https://img.shields.io/badge/License-MIT-green)
+![Stars](https://img.shields.io/badge/Stars-Welcome%20%E2%98%85-yellow) ![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi&logoColor=white) ![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white) ![Milvus](https://img.shields.io/badge/Milvus-2.5%2B-00A1EA?logo=milvus&logoColor=white) ![License](https://img.shields.io/badge/License-MIT-green)
 
 **简体中文**
+
+</div>
 
 ---
 
 ## 📸 项目展示
 
 | 登录页 | 对话主页 |
-| :-: | :--: |
-| 登录页 | 对话主页 |
+| :---: | :---: |
+| ![登录页](assets/login.png) | ![对话主页](assets/chat-home.png) |
 
 **RAG 思考链路实时可视化** —— 检索、评分、合并、精排全过程透明可见：
 
@@ -35,8 +29,8 @@
 **工具调用与知识库问答** —— Agent 自主调用工具，回答结构化呈现：
 
 | 知识库概览 | 实时天气查询 |
-| :---: | :----: |
-| 知识库概览 |  天气查询  |
+| :---: | :---: |
+| ![知识库概览](assets/chat-rag.png) | ![天气查询](assets/chat-tool.png) |
 
 **知识库文档管理**（管理员）—— 上传文档自动分块、向量化入库：
 
@@ -45,9 +39,9 @@
 **超级管理后台** —— 用户治理、模型配置、安全审计、文档管理一站式平台治理中心：
 
 | 数据面板 | 用户管理 |
-| :--: | :--: |
-| 数据面板 | 用户管理 |
-| 安全审计 | 模型配置 |
+| :---: | :---: |
+| ![数据面板](assets/super-dashboard.png) | ![用户管理](assets/super-users.png) |
+| ![安全审计](assets/super-audit.png) | ![模型配置](assets/super-model.png) |
 
 ## 💡 简介
 
@@ -164,20 +158,20 @@ FastAPI + LangGraph Agent
     │            Corrective RAG 流水线          │
     │                                          │
     │  retrieve_initial  ← Milvus Hybrid 检索   │
-    │        │            (Dense + BM25 + RRF) │
-    │        ▼                                 │
-    │  Auto-merging (L3→L2→L1) + Jina Rerank   │
-    │        │                                 │
-    │        ▼                                 │
-    │  grade_documents（相关性评分门控）          │
-    │        │                                 │
+    │        │            (Dense + BM25 + RRF)  │
+    │        ▼                                  │
+    │  Auto-merging (L3→L2→L1) + Jina Rerank    │
+    │        │                                  │
+    │        ▼                                  │
+    │  grade_documents（相关性评分门控）           │
+    │        │                                  │
     │        ├─ yes ──► 生成回答                 │
     │        └─ no ───► rewrite_question        │
-    │                   (Step-Back/HyDE/Complex) │
+    │                   (Step-Back/HyDE/Complex)│
     │                         │                 │
     │                         ▼                 │
-    │              retrieve_expanded 二次召回    │
-    └───────────────────────────────────────────────┘
+    │              retrieve_expanded 二次召回     │
+    └────────────────────────────────────────────────┘
               │
               ▼
     流式回答 + RAG Trace + 来源引用
@@ -245,8 +239,12 @@ cd frontend && npm run build # 前端构建（vue-tsc 类型检查）
 
 如果这个项目对你有帮助，欢迎点一个 Star！
 
-![Star History Chart](https://api.star-history.com/svg?repos=amd47802574/NovaChat\&type=Date)
+![Star History Chart](https://api.star-history.com/svg?repos=amd47802574/NovaChat&type=Date)
 
 ---
 
+<div align="center">
+
 **NovaChat** · 让知识连接，让答案发生。
+
+</div>
