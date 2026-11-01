@@ -33,8 +33,6 @@ Milvus 为分布式向量数据库、体积与依赖沉重，无法像普通桌�
 - `Dockerfile`：多阶段构建——Node 构建前端 `frontend/dist`，Python + uv 运行后端并静态托管前端。
 - `.dockerignore`：裁剪构建上下文，避免把 `node_modules` / `.venv` / `data` 等带入镜像。
 - `docker-compose.release.yml`：**在原有基础设施之上补齐 `app` 服务**，实现一条命令拉起整套系统。
-- `start-docker.sh` / `start-docker.bat`：Docker 一键启动脚本（跨平台）。
-- `start.sh` / `start.bat`：原生（非容器）运行脚本，遵循仓库约定用 `uv sync` 管理依赖。
 - `pyproject.toml`：版本由 `0.1.0` 统一提升至 `1.0.0`（与前端 `package.json` 的 1.0.0 对齐）。
 - `frontend/dist/`：已执行 `npm run build` 生产构建（经 `vue-tsc` 类型检查通过），随包分发。
 
