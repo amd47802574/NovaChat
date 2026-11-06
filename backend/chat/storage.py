@@ -78,7 +78,9 @@ class ConversationStorage:
                 .order_by(ChatMessage.id.asc())
                 .all()
             )
-            carried_extras = [(row.rag_trace, row.attachments) for row in existing_rows]
+            carried_extras = [
+                (row.rag_trace, row.attachments, row.ttft_ms) for row in existing_rows
+            ]
 
             db.query(ChatMessage).filter(ChatMessage.session_ref_id == session.id).delete(synchronize_session=False)
 
@@ -87,18 +89,24 @@ class ConversationStorage:
             for idx, msg in enumerate(messages):
                 rag_trace = None
                 attachments = None
+                ttft_ms = None
                 if extra_message_data and idx < len(extra_message_data):
                     extra = extra_message_data[idx] or {}
                     rag_trace = extra.get("rag_trace")
                     attachments = extra.get("attachments") or None
+                    ttft_ms = extra.get("ttft_ms")
 
-                carried_trace, carried_attachments = (
-                    carried_extras[idx] if idx < len(carried_extras) else (None, None)
+                carried_trace, carried_attachments, carried_ttft_ms = (
+                    carried_extras[idx]
+                    if idx < len(carried_extras)
+                    else (None, None, None)
                 )
                 if rag_trace is None:
                     rag_trace = carried_trace
                 if attachments is None:
                     attachments = carried_attachments
+                if ttft_ms is None:
+                    ttft_ms = carried_ttft_ms
 
                 db.add(
                     ChatMessage(
@@ -108,6 +116,7 @@ class ConversationStorage:
                         timestamp=now,
                         rag_trace=rag_trace,
                         attachments=attachments,
+                        ttft_ms=ttft_ms,
                     )
                 )
                 serialized.append(
@@ -117,6 +126,7 @@ class ConversationStorage:
                         "timestamp": _isoformat_utc(now),
                         "rag_trace": rag_trace,
                         "attachments": attachments,
+                        "ttft_ms": ttft_ms,
                     }
                 )
 
@@ -225,11 +235,46 @@ class ConversationStorage:
                     "timestamp": _isoformat_utc(row.timestamp),
                     "rag_trace": row.rag_trace,
                     "attachments": row.attachments,
+                    "ttft_ms": row.ttft_ms,
                 }
                 for row in rows
             ]
             cache.set_json(self._messages_cache_key(user_id, session_id), result)
             return result
+        finally:
+            db.close()
+
+    def update_message_ttft(
+        self, user_id: str, session_id: str, message_index: int, ttft_ms: int
+    ) -> bool:
+        """更新指定助手消息的首字耗时，并清除历史消息缓存。"""
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.username == user_id).first()
+            if not user:
+                return False
+            session = (
+                db.query(ChatSession)
+                .filter(ChatSession.user_id == user.id, ChatSession.session_id == session_id)
+                .first()
+            )
+            if not session:
+                return False
+            message = (
+                db.query(ChatMessage)
+                .filter(ChatMessage.session_ref_id == session.id)
+                .order_by(ChatMessage.id.asc())
+                .offset(message_index)
+                .limit(1)
+                .first()
+            )
+            if not message or message.message_type != "ai":
+                return False
+
+            message.ttft_ms = ttft_ms
+            db.commit()
+            cache.delete(self._messages_cache_key(user_id, session_id))
+            return True
         finally:
             db.close()
 

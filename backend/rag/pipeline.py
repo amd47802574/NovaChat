@@ -2,6 +2,7 @@ from typing import Annotated, Any, Literal, TypedDict, List, Optional
 import operator
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph, END
 from langgraph.types import Send
@@ -179,6 +180,7 @@ class RAGState(TypedDict):
     # 复杂度路由新增字段
     complexity: Optional[str]
     complexity_reason: Optional[str]
+    prefetched_retrieval: Optional[dict]
     sub_questions: Optional[List[str]]
     is_sub_agent: bool
     sub_results: Annotated[List[dict], operator.add]
@@ -307,6 +309,7 @@ def _initial_state(
         "rag_trace": None,
         "complexity": None,
         "complexity_reason": None,
+        "prefetched_retrieval": None,
         "sub_questions": None,
         "is_sub_agent": is_sub_agent,
         "sub_results": [],
@@ -318,8 +321,12 @@ def _initial_state(
 
 def retrieve_initial(state: RAGState) -> RAGState:
     query = state["question"]
-    _emit(state, "🔍", "正在检索知识库...", "初始检索")
-    retrieved = retrieve_documents(query, top_k=RETRIEVAL_TOP_K)
+    retrieved = state.get("prefetched_retrieval")
+    if retrieved is None:
+        _emit(state, "🔍", "正在检索知识库...", "初始检索")
+        retrieved = retrieve_documents(query, top_k=RETRIEVAL_TOP_K)
+    else:
+        _emit(state, "🔍", "正在整理并行检索结果...")
     results = retrieved.get("docs", [])
     retrieve_meta = retrieved.get("meta", {})
     context = _format_docs(results)
@@ -831,34 +838,68 @@ DECOMPOSE_PROMPT = (
 
 
 def classify_complexity(state: RAGState) -> RAGState:
-    """使用 FAST_MODEL 判断问题复杂度。"""
+    """使用快速模型判断问题复杂度，并为常见问题并行预取检索结果。"""
     question = state["question"]
     _emit(state, "🧭", "正在分析问题复杂度...")
+
+    prefetched_retrieval = None
+    retrieval_executor = None
+    retrieval_future = None
+    complex_markers = (
+        "对比", "比较", "分别", "综合", "全面", "多方面", "优缺点", "同时", "各自", "逐一",
+    )
+    if len(question.strip()) <= 240 and not any(marker in question for marker in complex_markers):
+        _emit(state, "🔍", "正在检索知识库...", "与问题复杂度分析并行")
+        retrieval_executor = ThreadPoolExecutor(max_workers=1)
+        retrieval_future = retrieval_executor.submit(
+            retrieve_documents,
+            question,
+            RETRIEVAL_TOP_K,
+        )
 
     model = _get_complexity_model()
     if not model:
         _emit(state, "⚠️", "复杂度模型不可用，默认简单问题")
-        return {"complexity": "simple", "complexity_reason": "model_unavailable"}
-
-    prompt = COMPLEXITY_PROMPT.format(question=question)
-    try:
-        result = model.with_structured_output(ComplexityResult).invoke(
-            [{"role": "user", "content": prompt}]
-        )
-        complexity = (result.complexity or "simple").strip().lower()
-        reason = (result.reason or "").strip()
-        if complexity not in ("simple", "complex"):
-            complexity = "simple"
-    except Exception:
         complexity = "simple"
-        reason = "classification_error"
+        reason = "model_unavailable"
+    else:
+        prompt = COMPLEXITY_PROMPT.format(question=question)
+        try:
+            result = model.with_structured_output(ComplexityResult).invoke(
+                [{"role": "user", "content": prompt}]
+            )
+            complexity = (result.complexity or "simple").strip().lower()
+            reason = (result.reason or "").strip()
+            if complexity not in ("simple", "complex"):
+                complexity = "simple"
+        except Exception:
+            complexity = "simple"
+            reason = "classification_error"
+
+    if retrieval_future is not None:
+        if complexity == "simple":
+            try:
+                prefetched_retrieval = retrieval_future.result()
+            except Exception:
+                prefetched_retrieval = None
+            finally:
+                if retrieval_executor is not None:
+                    retrieval_executor.shutdown(wait=True)
+        else:
+            retrieval_future.cancel()
+            if retrieval_executor is not None:
+                retrieval_executor.shutdown(wait=False, cancel_futures=True)
 
     if complexity == "simple":
         _emit(state, "✅", "简单问题 → 走标准 RAG 流程", f"理由: {reason[:60]}")
     else:
         _emit(state, "🔀", "复杂问题 → 将分解为子问题并行检索", f"理由: {reason[:60]}")
 
-    return {"complexity": complexity, "complexity_reason": reason}
+    return {
+        "complexity": complexity,
+        "complexity_reason": reason,
+        "prefetched_retrieval": prefetched_retrieval,
+    }
 
 
 def decompose_question(state: RAGState) -> RAGState:

@@ -145,3 +145,44 @@ export interface UpdateModelConfigResponse {
   message: string;
   applied_at: string | null;
 }
+
+export interface VectorConfigField {
+  key: string;
+  value: string;
+  is_secret: boolean;
+  is_set: boolean;
+}
+
+export interface VectorConfigResponse {
+  config: VectorConfigField[];
+  migration_running: boolean;
+  applied_at: string | null;
+}
+
+export interface UpdateVectorConfigRequest {
+  embedding_provider?: string;
+  embedding_model?: string;
+  dense_embedding_dim?: string;
+  embedding_device?: string;
+  dashscope_api_key?: string;
+  dashscope_embedding_url?: string;
+  dashscope_rerank_api_key?: string;
+  rerank_provider?: string;
+  rerank_model?: string;
+  rerank_binding_host?: string;
+  rerank_api_key?: string;
+}
+
+export interface UpdateVectorConfigResponse {
+  message: string;
+  migration_job_id?: string | null;
+}
+
+export interface VectorMigrationJob {
+  job_id: string;
+  status: 'running' | 'completed' | 'failed';
+  message: string;
+  processed_files: number;
+  total_files: number;
+  collection: string;
+}

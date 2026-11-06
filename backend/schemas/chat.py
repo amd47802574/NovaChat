@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatAttachmentRef(BaseModel):
@@ -106,6 +106,11 @@ class MessageInfo(BaseModel):
     timestamp: str
     rag_trace: Optional[RagTrace] = None
     attachments: Optional[List[MessageAttachment]] = None
+    ttft_ms: Optional[int] = None
+
+
+class MessageTTFTUpdateRequest(BaseModel):
+    ttft_ms: int = Field(ge=0)
 
 
 class SessionMessagesResponse(BaseModel):

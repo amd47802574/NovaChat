@@ -104,7 +104,7 @@ def init_db() -> None:
 
 
 def _ensure_chat_message_columns() -> None:
-    """create_all 只建表不补列，对已存在的 chat_messages 做轻量自动迁移。"""
+    """create_all 只建表不补列，对已有聊天消息表补齐新字段。"""
     from sqlalchemy import text
 
     try:
@@ -112,8 +112,11 @@ def _ensure_chat_message_columns() -> None:
             conn.execute(
                 text("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachments JSON")
             )
+            conn.execute(
+                text("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS ttft_ms INTEGER")
+            )
     except Exception as exc:
-        print(f"chat_messages.attachments 列迁移失败（可手动执行 ALTER TABLE 补齐）: {exc}")
+        print(f"chat_messages 字段迁移失败（可手动执行 ALTER TABLE 补齐）: {exc}")
 
 
 def _ensure_user_columns() -> None:

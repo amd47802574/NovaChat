@@ -116,6 +116,7 @@ export interface Message {
   hitlPrompt?: string;
   hitlOptions?: string[];
   hitlResumeText?: string;
+  ttftMs?: number;
   ragTrace?: RagTrace | null;
   ragSteps?: RagStep[];
   _groupedSteps?: GroupedRagStep[];

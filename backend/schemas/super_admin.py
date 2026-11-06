@@ -153,3 +153,47 @@ class UpdateModelConfigRequest(BaseModel):
 class UpdateModelConfigResponse(BaseModel):
     message: str
     applied_at: Optional[str] = None
+
+
+# ----------------------------- 向量模型配置 -----------------------------
+
+
+class VectorConfigField(BaseModel):
+    key: str
+    value: str = ""
+    is_secret: bool = False
+    is_set: bool = False
+
+
+class VectorConfigResponse(BaseModel):
+    config: List[VectorConfigField]
+    migration_running: bool = False
+    applied_at: Optional[str] = None
+
+
+class UpdateVectorConfigRequest(BaseModel):
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+    dense_embedding_dim: Optional[str] = None
+    embedding_device: Optional[str] = None
+    dashscope_api_key: Optional[str] = None
+    dashscope_embedding_url: Optional[str] = None
+    dashscope_rerank_api_key: Optional[str] = None
+    rerank_provider: Optional[str] = None
+    rerank_model: Optional[str] = None
+    rerank_binding_host: Optional[str] = None
+    rerank_api_key: Optional[str] = None
+
+
+class UpdateVectorConfigResponse(BaseModel):
+    message: str
+    migration_job_id: Optional[str] = None
+
+
+class VectorMigrationJobResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+    processed_files: int = 0
+    total_files: int = 0
+    collection: str = ""

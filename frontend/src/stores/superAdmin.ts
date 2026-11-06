@@ -11,9 +11,20 @@ import type {
   ResetPasswordResponse,
   UpdateModelConfigRequest,
   UpdateModelConfigResponse,
+  VectorConfigField,
+  VectorConfigResponse,
+  UpdateVectorConfigRequest,
+  UpdateVectorConfigResponse,
+  VectorMigrationJob,
   UpdateUserRequest,
   UserRole,
 } from '@/types/user';
+
+const VECTOR_SECRET_KEYS = new Set([
+  'DASHSCOPE_API_KEY',
+  'DASHSCOPE_RERANK_API_KEY',
+  'RERANK_API_KEY',
+]);
 
 const handleError = (error: any): never => {
   const msg = error?.response?.data?.detail || error?.message || '操作失败';
@@ -46,6 +57,11 @@ export const useSuperAdminStore = defineStore('superAdmin', {
     modelConfig: [] as ModelConfigField[],
     modelConfigAppliedAt: null as string | null,
     modelConfigLoading: false,
+    // 向量与重排模型配置
+    vectorConfig: [] as VectorConfigField[],
+    vectorConfigAppliedAt: null as string | null,
+    vectorConfigLoading: false,
+    vectorMigrationJob: null as VectorMigrationJob | null,
   }),
 
   actions: {
@@ -191,6 +207,59 @@ export const useSuperAdminStore = defineStore('superAdmin', {
       // 保存后刷新本地展示（敏感字段回显为空，避免明文残留在前端状态）
       await this.fetchModelConfig();
       return data;
+    },
+
+    async fetchVectorConfig() {
+      this.vectorConfigLoading = true;
+      try {
+        const { data } = await api.get<VectorConfigResponse>('/super-admin/vector-config');
+        this.vectorConfig = data.config.map((field) => {
+          const isSecret = field.is_secret || VECTOR_SECRET_KEYS.has(field.key);
+          return {
+            ...field,
+            is_secret: isSecret,
+            is_set: isSecret ? field.is_set || Boolean(field.value) : field.is_set,
+            value: isSecret ? '' : field.value,
+          };
+        });
+        this.vectorConfigAppliedAt = data.applied_at;
+      } catch (error) {
+        handleError(error);
+      } finally {
+        this.vectorConfigLoading = false;
+      }
+    },
+
+    async updateVectorConfig(payload: UpdateVectorConfigRequest) {
+      try {
+        const { data } = await api.put<UpdateVectorConfigResponse>('/super-admin/vector-config', payload);
+        if (data.migration_job_id) {
+          this.vectorMigrationJob = {
+            job_id: data.migration_job_id,
+            status: 'running',
+            message: data.message,
+            processed_files: 0,
+            total_files: 0,
+            collection: '',
+          };
+        } else {
+          await this.fetchVectorConfig();
+        }
+        return data;
+      } catch (error) {
+        return handleError(error);
+      }
+    },
+
+    async fetchVectorMigrationJob(jobId: string) {
+      try {
+        const { data } = await api.get<VectorMigrationJob>(`/super-admin/vector-config/jobs/${jobId}`);
+        this.vectorMigrationJob = data;
+        if (data.status !== 'running') await this.fetchVectorConfig();
+        return data;
+      } catch (error) {
+        return handleError(error);
+      }
     },
   },
 });

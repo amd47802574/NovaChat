@@ -246,6 +246,7 @@ export const useChatStore = defineStore('chat', {
           hitlPrompt: isHitlRequest ? ragTrace?.hitl_prompt || msg.content : undefined,
           hitlOptions: isHitlRequest ? ragTrace?.hitl_options || [] : undefined,
           hitlResumeText: resumeTextForMessage,
+          ttftMs: typeof msg.ttft_ms === 'number' ? msg.ttft_ms : undefined,
           ragTrace,
           toolCalls: [],
           attachments: Array.isArray(msg.attachments) && msg.attachments.length
@@ -447,6 +448,7 @@ export const useChatStore = defineStore('chat', {
       }
       // 纯附件消息给一个占位文本，保证会话标题、气泡与后端记录都有可读内容
       const displayText = text || (attachments.length ? '请分析这些附件' : '');
+      const requestStartedAt = performance.now();
 
       const requestSessionId = this.sessionId;
       const requestMessages = this.ensureSessionMessages(requestSessionId);
@@ -575,6 +577,9 @@ export const useChatStore = defineStore('chat', {
                 if (data.type === 'content') {
                   const botMsg = requestMessages[botMsgIdx];
                   if (!botMsg) continue;
+                  if (botMsg.ttftMs === undefined && /\S/u.test(data.content || '')) {
+                    botMsg.ttftMs = Math.round(performance.now() - requestStartedAt);
+                  }
                   if (botMsg.isThinking) {
                     botMsg.isThinking = false;
                   }
@@ -595,6 +600,7 @@ export const useChatStore = defineStore('chat', {
                   this.pendingHitlBySession[requestSessionId] = hitl;
                   botMsg.isThinking = false;
                   botMsg.isHitlRequest = true;
+                  botMsg.ttftMs = undefined;
                   botMsg.hitlPrompt = hitl.prompt;
                   botMsg.hitlOptions = hitl.options || [];
                   botMsg.text = this.formatHitlText(hitl);
@@ -649,6 +655,22 @@ export const useChatStore = defineStore('chat', {
                 console.warn('SSE parse error:', e);
               }
             }
+          }
+        }
+
+        const completedBotMsg = requestMessages[botMsgIdx];
+        if (
+          streamDone
+          && completedBotMsg?.ttftMs !== undefined
+          && !completedBotMsg.isHitlRequest
+        ) {
+          try {
+            await api.patch(
+              `/sessions/${encodeURIComponent(requestSessionId)}/messages/${botMsgIdx}/ttft`,
+              { ttft_ms: completedBotMsg.ttftMs }
+            );
+          } catch (error) {
+            console.warn('保存首字耗时失败:', error);
           }
         }
       } catch (error: any) {

@@ -97,15 +97,11 @@ class MilvusStore:
         if client.has_collection(collection_name):
             current_dim = MilvusStore._get_collection_dense_dim(client, collection_name)
             if current_dim is not None and current_dim != dense_dim:
-                logger.warning(
-                    "Milvus collection %s dimension mismatch detected: existing=%s, expected=%s. Recreating collection.",
-                    collection_name,
-                    current_dim,
-                    dense_dim,
+                raise ValueError(
+                    f"Milvus 集合 {collection_name} 的向量维度为 {current_dim}，当前模型要求 {dense_dim}；"
+                    "为保护已有知识库，系统不会自动删除或重建集合，请先完成向量迁移。"
                 )
-                client.drop_collection(collection_name=collection_name)
-            else:
-                return
+            return
 
         schema = client.create_schema(auto_id=True, enable_dynamic_field=True)
         schema.add_field("id", DataType.INT64, is_primary=True, auto_id=True)

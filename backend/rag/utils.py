@@ -12,9 +12,18 @@ from langchain.chat_models import init_chat_model
 ARK_API_KEY = os.getenv("ARK_API_KEY")
 MODEL = os.getenv("MODEL")
 BASE_URL = os.getenv("BASE_URL")
+RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "custom")
+DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_EMBEDDING_URL") or os.getenv("BASE_URL", "")
 RERANK_MODEL = os.getenv("RERANK_MODEL")
 RERANK_BINDING_HOST = os.getenv("RERANK_BINDING_HOST")
-RERANK_API_KEY = os.getenv("RERANK_API_KEY")
+if RERANK_PROVIDER == "dashscope":
+    RERANK_API_KEY = (
+        os.getenv("DASHSCOPE_RERANK_API_KEY")
+        or os.getenv("RERANK_API_KEY")
+        or os.getenv("DASHSCOPE_API_KEY")
+    )
+else:
+    RERANK_API_KEY = os.getenv("RERANK_API_KEY")
 AUTO_MERGE_ENABLED = os.getenv("AUTO_MERGE_ENABLED", "true").lower() != "false"
 AUTO_MERGE_THRESHOLD = int(os.getenv("AUTO_MERGE_THRESHOLD", "2"))
 LEAF_RETRIEVE_LEVEL = int(os.getenv("LEAF_RETRIEVE_LEVEL", "3"))
@@ -126,6 +135,12 @@ def merge_retrieval_trace(accumulated: Dict[str, Any], meta: Dict[str, Any]) -> 
 
 def _get_rerank_endpoint() -> str:
     """拼接精排端点；兼容 host 已含 /v1 或已含完整 /v1/rerank 的写法。"""
+    if RERANK_PROVIDER == "dashscope":
+        base = DASHSCOPE_BASE_URL.strip().rstrip("/")
+        suffix = "/compatible-mode/v1"
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+        return f"{base}/api/v1/services/rerank/text-rerank/text-rerank" if base else ""
     if not RERANK_BINDING_HOST:
         return ""
     host = RERANK_BINDING_HOST.strip().rstrip("/")
@@ -283,13 +298,23 @@ def _rerank_documents(query: str, docs: List[dict], top_k: int) -> Tuple[List[di
     if not docs_with_rank or not meta["rerank_enabled"]:
         return _sort_by_rank_score(docs_with_rank)[:top_k], meta
 
-    payload = {
-        "model": RERANK_MODEL,
-        "query": query,
-        "documents": [doc.get("text", "") for doc in docs_with_rank],
-        "top_n": min(top_k, len(docs_with_rank)),
-        "return_documents": False,
-    }
+    if RERANK_PROVIDER == "dashscope":
+        payload = {
+            "model": RERANK_MODEL,
+            "input": {
+                "query": query,
+                "documents": [doc.get("text", "") for doc in docs_with_rank],
+            },
+            "parameters": {"top_n": min(top_k, len(docs_with_rank))},
+        }
+    else:
+        payload = {
+            "model": RERANK_MODEL,
+            "query": query,
+            "documents": [doc.get("text", "") for doc in docs_with_rank],
+            "top_n": min(top_k, len(docs_with_rank)),
+            "return_documents": False,
+        }
 
     headers = {
         "Content-Type": "application/json",
@@ -306,7 +331,8 @@ def _rerank_documents(query: str, docs: List[dict], top_k: int) -> Tuple[List[di
             meta["rerank_error"] = f"HTTP {response.status_code}: {response.text}"
             return _sort_by_rank_score(docs_with_rank)[:top_k], meta
 
-        items = response.json().get("results", [])
+        result_body = response.json()
+        items = result_body.get("output", {}).get("results", []) if RERANK_PROVIDER == "dashscope" else result_body.get("results", [])
         reranked = []
         for item in items:
             idx = item.get("index")

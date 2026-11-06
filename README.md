@@ -196,6 +196,7 @@ NovaChat
 │       ├── components/Documents/  # 知识库管理（上传、文档设置）
 │       ├── components/SuperAdmin/ # 超级管理后台（用户治理、审计、模型配置）
 │       └── stores/                # Pinia 状态（auth / chat / sessions / documents）
+├── docs/                     # 架构速查（rag-graph.md：RAG 主图 9 节点与 State 字段）
 ├── data/                    # 上传文档与运行数据
 ├── tests/                   # pytest 测试用例
 ├── docker-compose.yml       # 基础设施编排（Milvus / PostgreSQL / Redis）

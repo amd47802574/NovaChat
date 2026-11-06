@@ -25,6 +25,9 @@
       <button :class="['sa-nav-btn', { active: tab === 'models' }]" @click="tab = 'models'">
         <i class="fas fa-sliders"></i> 模型配置
       </button>
+      <button :class="['sa-nav-btn', { active: tab === 'vectors' }]" @click="tab = 'vectors'">
+        <i class="fas fa-cubes"></i> 向量与重排
+      </button>
       <button :class="['sa-nav-btn', { active: tab === 'audit' }]" @click="tab = 'audit'">
         <i class="fas fa-clipboard-list"></i> 安全审计
       </button>
@@ -37,6 +40,7 @@
       <DashboardView v-if="tab === 'dashboard'" />
       <UserManagement v-else-if="tab === 'users'" />
       <ModelConfigView v-else-if="tab === 'models'" />
+      <VectorModelView v-else-if="tab === 'vectors'" />
       <AuditLogView v-else-if="tab === 'audit'" />
       <DocumentSettings v-else-if="tab === 'docs'" embedded />
     </main>
@@ -49,11 +53,12 @@ import { useAuthStore } from '@/stores/auth';
 import DashboardView from './DashboardView.vue';
 import UserManagement from './UserManagement.vue';
 import ModelConfigView from './ModelConfigView.vue';
+import VectorModelView from './VectorModelView.vue';
 import AuditLogView from './AuditLogView.vue';
 import DocumentSettings from '@/components/Documents/DocumentSettings.vue';
 
 const authStore = useAuthStore();
-const tab = ref<'dashboard' | 'users' | 'models' | 'audit' | 'docs'>('dashboard');
+const tab = ref<'dashboard' | 'users' | 'models' | 'vectors' | 'audit' | 'docs'>('dashboard');
 
 const onLogout = () => {
   if (confirm('确定退出登录吗？')) {

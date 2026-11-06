@@ -526,7 +526,7 @@ async def chat_with_agent_stream(
     session_id: str = "default_session",
     attachments: list | None = None,
 ):
-    messages, metadata = storage.load_with_meta(user_id, session_id)
+    messages, metadata = await asyncio.to_thread(storage.load_with_meta, user_id, session_id)
     persistent_note = metadata.get("persistent_note", "")
     is_first_message = len(messages) == 0
     pending_hitl = metadata.get(PENDING_HITL_KEY)
@@ -545,7 +545,7 @@ async def chat_with_agent_stream(
         if is_hitl_resume
         else user_text
     )
-    attachment_contents = _prepare_attachments(attachments)
+    attachment_contents = await asyncio.to_thread(_prepare_attachments, attachments)
     attachment_metas = _attachment_metas(attachment_contents)
 
     output_queue = asyncio.Queue()
@@ -558,7 +558,7 @@ async def chat_with_agent_stream(
 
     try:
         messages.append(HumanMessage(content=user_text))
-        storage.save(user_id, session_id, messages)
+        await asyncio.to_thread(storage.save, user_id, session_id, messages)
 
         # 附件解析结果先推给前端「思考阶段」，让用户看到解析进度
         for step in build_rag_steps(attachment_contents):
@@ -632,7 +632,8 @@ async def chat_with_agent_stream(
                 save_meta[PENDING_HITL_KEY] = None
 
             messages.append(AIMessage(content=full_response))
-            storage.save(
+            await asyncio.to_thread(
+                storage.save,
                 user_id,
                 session_id,
                 messages,
@@ -660,7 +661,7 @@ async def chat_with_agent_stream(
             yield "data: [DONE]\n\n"
             return
 
-        request_agent = create_agent_for_request(ctx)
+        request_agent = await asyncio.to_thread(create_agent_for_request, ctx)
         context_messages = _build_context_messages(
             messages[:-1],
             persistent_note,
@@ -804,7 +805,8 @@ async def chat_with_agent_stream(
             full_response = _append_error_content(full_response, agent_error)
 
         messages.append(AIMessage(content=full_response))
-        storage.save(
+        await asyncio.to_thread(
+            storage.save,
             user_id,
             session_id,
             messages,

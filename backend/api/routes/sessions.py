@@ -5,6 +5,7 @@ from backend.db.models import User
 from backend.infra.auth import get_current_user, require_conversation_access
 from backend.schemas import (
     MessageInfo,
+    MessageTTFTUpdateRequest,
     SessionBatchDeleteRequest,
     SessionBatchDeleteResponse,
     SessionClearResponse,
@@ -32,10 +33,33 @@ async def get_session_messages(session_id: str, current_user: User = Depends(get
                 timestamp=msg["timestamp"],
                 rag_trace=msg.get("rag_trace"),
                 attachments=msg.get("attachments") or None,
+                ttft_ms=msg.get("ttft_ms"),
             )
             for msg in storage.get_session_messages(current_user.username, session_id)
         ]
         return SessionMessagesResponse(messages=messages)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/sessions/{session_id}/messages/{message_index}/ttft")
+async def update_message_ttft(
+    session_id: str,
+    message_index: int,
+    payload: MessageTTFTUpdateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    if message_index < 0:
+        raise HTTPException(status_code=400, detail="消息序号无效")
+    try:
+        updated = storage.update_message_ttft(
+            current_user.username, session_id, message_index, payload.ttft_ms
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="助手消息不存在")
+        return {"message": "首字耗时已保存"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

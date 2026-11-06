@@ -61,6 +61,8 @@ class ChatMessage(Base):
     rag_trace: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # 用户消息携带的聊天附件元数据列表（[{id, filename, kind, mime}]），AI 消息为空
     attachments: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 助手首字耗时（毫秒），用于历史消息恢复
+    ttft_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     session = relationship("ChatSession", back_populates="messages")
 

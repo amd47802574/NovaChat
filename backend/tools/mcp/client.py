@@ -21,10 +21,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -36,6 +38,9 @@ PROJECT_ROOT = DEFAULT_CONFIG_PATH.parent
 
 # 是否启用 MCP 客户端(可通过环境变量 NOVACHAT_MCP_ENABLED=0 关闭)
 ENV_ENABLED_FLAG = "NOVACHAT_MCP_ENABLED"
+_TOOLS_CACHE_LOCK = threading.Lock()
+_TOOLS_CACHE_KEY: tuple[str, str] | None = None
+_TOOLS_CACHE: List[Any] = []
 
 
 def _is_enabled() -> bool:
@@ -130,22 +135,9 @@ def load_mcp_config(config_path: Optional[Path] = None) -> Dict[str, Dict[str, A
     return cleaned
 
 
-async def load_external_mcp_tools(
-    config_path: Optional[Path] = None,
+async def _load_external_mcp_tools_for_servers(
+    servers: Dict[str, Dict[str, Any]],
 ) -> List[Any]:
-    """异步加载所有外部 MCP Server 的工具。
-
-    Args:
-        config_path: 自定义配置路径。
-
-    Returns:
-        LangChain BaseTool 列表(可能是空列表)。失败的 Server 会被跳过。
-    """
-    if not _is_enabled():
-        logger.info("MCP 客户端已被 %s 关闭", ENV_ENABLED_FLAG)
-        return []
-
-    servers = load_mcp_config(config_path)
     if not servers:
         return []
 
@@ -176,6 +168,26 @@ async def load_external_mcp_tools(
     return tools
 
 
+async def load_external_mcp_tools(
+    config_path: Optional[Path] = None,
+) -> List[Any]:
+    """异步加载所有外部 MCP Server 的工具。"""
+    if not _is_enabled():
+        logger.info("MCP 客户端已被 %s 关闭", ENV_ENABLED_FLAG)
+        return []
+    return await _load_external_mcp_tools_for_servers(load_mcp_config(config_path))
+
+
+def _mcp_tools_cache_key(
+    config_path: Optional[Path],
+    servers: Dict[str, Dict[str, Any]],
+) -> tuple[str, str]:
+    config = json.dumps(servers, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    config_hash = hashlib.sha256(config.encode("utf-8")).hexdigest()
+    path = str((config_path or DEFAULT_CONFIG_PATH).resolve())
+    return path, config_hash
+
+
 def load_external_mcp_tools_sync(
     config_path: Optional[Path] = None,
 ) -> List[Any]:
@@ -191,25 +203,41 @@ def load_external_mcp_tools_sync(
     Returns:
         LangChain BaseTool 列表(失败返回空列表,不抛异常)。
     """
+    global _TOOLS_CACHE_KEY, _TOOLS_CACHE
+
     if not _is_enabled():
         return []
 
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # 没有运行中的事件循环,直接 asyncio.run
-        try:
-            return asyncio.run(load_external_mcp_tools(config_path))
-        except Exception as exc:
-            logger.warning("同步加载 MCP 工具失败: %s", exc)
-            return []
+    servers = load_mcp_config(config_path)
+    if not servers:
+        return []
 
-    # 已在事件循环内:在新线程中跑一个独立循环,避免嵌套
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, load_external_mcp_tools(config_path))
+    cache_key = _mcp_tools_cache_key(config_path, servers)
+    with _TOOLS_CACHE_LOCK:
+        if cache_key == _TOOLS_CACHE_KEY:
+            return list(_TOOLS_CACHE)
+
         try:
-            return future.result(timeout=30)
-        except Exception as exc:
-            logger.warning("线程中加载 MCP 工具超时或失败: %s", exc)
-            return []
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # 没有运行中的事件循环,直接 asyncio.run
+            try:
+                tools = asyncio.run(load_external_mcp_tools(config_path))
+            except Exception as exc:
+                logger.warning("同步加载 MCP 工具失败: %s", exc)
+                return []
+        else:
+            # 已在事件循环内:在新线程中跑一个独立循环,避免嵌套
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(asyncio.run, load_external_mcp_tools(config_path))
+                try:
+                    tools = future.result(timeout=30)
+                except Exception as exc:
+                    logger.warning("线程中加载 MCP 工具超时或失败: %s", exc)
+                    return []
+
+        if tools:
+            _TOOLS_CACHE_KEY = cache_key
+            _TOOLS_CACHE = list(tools)
+        return list(tools)

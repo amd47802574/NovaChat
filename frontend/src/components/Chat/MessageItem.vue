@@ -34,6 +34,7 @@
         <MessageCopyButton
           v-if="canCopy"
           :copied="copied"
+          :ttft-ms="msg.ttftMs"
           @copy="copyMessage"
         />
 

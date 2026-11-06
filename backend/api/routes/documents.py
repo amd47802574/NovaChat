@@ -19,6 +19,13 @@ from backend.schemas import (
 router = APIRouter(tags=["documents"])
 
 
+def _ensure_no_vector_migration() -> None:
+    from backend.infra.vector_config import is_migration_running
+
+    if is_migration_running():
+        raise HTTPException(status_code=409, detail="向量迁移期间暂不可上传或删除知识库文档，请稍后重试")
+
+
 def _process_upload_job(job_id: str, file_path: str, filename: str) -> None:
     from backend.api.resources import (
         delete_document_transactionally,
@@ -148,6 +155,7 @@ async def upload_document_async(
         save_upload_file,
     )
 
+    _ensure_no_vector_migration()
     filename = file.filename or ""
     if not filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
@@ -211,6 +219,7 @@ async def upload_document(file: UploadFile = File(...), _: User = Depends(requir
         save_upload_file,
     )
 
+    _ensure_no_vector_migration()
     try:
         filename = file.filename or ""
         if not filename:
@@ -258,6 +267,7 @@ async def upload_document(file: UploadFile = File(...), _: User = Depends(requir
 
 @router.delete("/documents/{filename}", response_model=DocumentDeleteResponse)
 async def delete_document(filename: str, _: User = Depends(require_admin)):
+    _ensure_no_vector_migration()
     from backend.api.resources import delete_document_transactionally
 
     try:
@@ -278,6 +288,7 @@ async def delete_document_async(
     background_tasks: BackgroundTasks,
     _: User = Depends(require_admin),
 ):
+    _ensure_no_vector_migration()
     from backend.api.resources import is_supported_document
 
     if not is_supported_document(filename):
