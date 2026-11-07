@@ -138,7 +138,7 @@ npm run build    # 生产构建，由后端静态托管，访问 http://127.0.0.
 npm run dev      # 或开发模式，访问 http://127.0.0.1:3000
 ```
 
-> 端口说明：PostgreSQL `5432` · Redis `6379` · Milvus `19530` · MinIO `9000/9001` · Attu `8080`
+> 端口说明：PostgreSQL `5432` · Redis `6379` · Milvus `19530` · MinIO `9000/9001`
 
 ## 🏗️ 整体架构
 

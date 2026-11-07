@@ -54,7 +54,6 @@ docker compose -f docker-compose.release.yml up -d --build
 
 # 4) 浏览器访问
 #    http://localhost:8000        （NovaChat 主界面）
-#    http://localhost:8080        （Milvus 可视化管理 Attu，可选）
 ```
 
 ### 方式 B：原生运行（仅用 Docker 跑基础设施，应用本地运行）
