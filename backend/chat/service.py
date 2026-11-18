@@ -289,6 +289,13 @@ def _build_context_messages(
     return context_messages
 
 
+def _close_interrupted_turn(messages: list) -> list:
+    """旧客户端中止流时只落库了用户消息；在下一轮前补齐其助手终止状态。"""
+    if messages and isinstance(messages[-1], HumanMessage):
+        messages.append(AIMessage(content="（上一轮回答已被终止）"))
+    return messages
+
+
 def _prepare_attachments(attachments: list | None) -> list[AttachmentContent]:
     """把数据库附件记录转换成模型侧内容，单条失败不影响其他附件。"""
     return [build_attachment_content(item) for item in (attachments or [])]
@@ -394,6 +401,7 @@ def chat_with_agent(
     attachments: list | None = None,
 ):
     messages, metadata = storage.load_with_meta(user_id, session_id)
+    messages = _close_interrupted_turn(messages)
     persistent_note = metadata.get("persistent_note", "")
     is_first_message = len(messages) == 0
     pending_hitl = metadata.get(PENDING_HITL_KEY)
@@ -527,6 +535,7 @@ async def chat_with_agent_stream(
     attachments: list | None = None,
 ):
     messages, metadata = await asyncio.to_thread(storage.load_with_meta, user_id, session_id)
+    messages = _close_interrupted_turn(messages)
     persistent_note = metadata.get("persistent_note", "")
     is_first_message = len(messages) == 0
     pending_hitl = metadata.get(PENDING_HITL_KEY)

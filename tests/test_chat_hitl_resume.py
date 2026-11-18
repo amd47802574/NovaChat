@@ -78,6 +78,29 @@ async def _collect_stream(*args, **kwargs):
 
 
 class ChatHitlResumeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_new_question_closes_an_interrupted_turn_and_remains_current(self):
+        fake_storage = FakeStorage(messages=[HumanMessage(content="被我暂停的旧问题")])
+        captured_contexts = []
+
+        class ContextCaptureAgent:
+            async def astream(self, payload, stream_mode=None, config=None):
+                captured_contexts.append(payload["messages"])
+                yield AIMessageChunk(content="这是新问题的回答"), {}
+
+        with (
+            patch.object(service, "storage", fake_storage),
+            patch.object(service, "create_agent_for_request", return_value=ContextCaptureAgent()),
+            patch.object(service, "generate_session_title", AsyncMock(return_value="新问题")),
+            patch.object(service, "update_persistent_note", AsyncMock(return_value="")),
+        ):
+            await _collect_stream("现在请回答新的问题", "u", "s-interrupted")
+
+        context = captured_contexts[0]
+        self.assertEqual("现在请回答新的问题", context[-1].content)
+        self.assertEqual("被我暂停的旧问题", context[-3].content)
+        self.assertEqual("（上一轮回答已被终止）", context[-2].content)
+        self.assertEqual("（上一轮回答已被终止）", fake_storage.messages[1].content)
+
     async def test_stream_hitl_request_persists_pending_state_without_content(self):
         trace = {
             "retrieval_status": "needs_clarification",
@@ -159,7 +182,7 @@ class ChatHitlResumeTests(unittest.IsolatedAsyncioTestCase):
             patch.object(service, "storage", fake_storage),
             patch.object(service, "create_agent_for_request", create_agent_mock),
             patch.object(service, "_resume_rag_from_hitl_sync", resume_mock),
-            patch.object(service, "model", fake_model),
+            patch.object(service.chat_runtime, "model", fake_model),
             patch.object(service, "update_persistent_note", AsyncMock(return_value="updated note")),
         ):
             chunks = await _collect_stream("丹瑾", "u", "s")

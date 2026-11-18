@@ -74,7 +74,7 @@ NovaChat（星智问答）是一个基于 **Corrective RAG（纠错型检索增�
 - **RBAC 权限**：用户注册/登录、JWT 鉴权、admin / user 角色控制；超级管理后台可管理用户角色与状态、重置密码，并解除包括管理员账号在内的登录锁定，同时提供审计日志与模型配置；
 - **MCP 双向支持**：既可把本地工具暴露为 MCP Server 供 Claude Desktop / Cursor 调用，也可作为客户端接入任意外部 MCP Server；
 - **可扩展工具**：天气查询、网络搜索（Firecrawl / Serper / DuckDuckGo 可切换）、计算、时间等内置工具，支持按需扩展；
-- **回答终止**：前端 `AbortController` + 后端确定性任务取消，中断即止损，节省 Token。
+- **回答终止**：前端 `AbortController` + 后端确定性任务取消，中断即止损，节省 Token；停止后继续提问时，新问题会作为独立的当前回合处理。
 
 ## 🛠️ 技术栈
 
