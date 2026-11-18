@@ -63,6 +63,17 @@ describe('document upload polling', () => {
     expect(source).toContain('accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.htm,.md,.markdown"');
   });
 
+  it('starts uploading as soon as a valid file is selected', () => {
+    const source = readFileSync(
+      new URL('../components/Documents/UploadSection.vue', import.meta.url),
+      'utf8'
+    );
+    const selectHandler = source.match(/const onFileSelect = \(event: Event\) => \{([\s\S]*?)\n\};/);
+
+    expect(selectHandler?.[1]).toContain('void onUpload()');
+    expect(source).not.toContain('class="btn-primary"');
+  });
+
   it('continues polling upload progress until the active job completes', async () => {
     const store = useDocumentStore();
     const runningJob = createUploadJob();
