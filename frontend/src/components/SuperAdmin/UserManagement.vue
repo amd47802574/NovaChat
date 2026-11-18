@@ -53,6 +53,9 @@
               <td class="col-actions">
                 <button class="link-btn" @click="openEdit(u)"><i class="fas fa-edit"></i> 编辑</button>
                 <button class="link-btn" @click="openResetPwd(u)"><i class="fas fa-key"></i> 重置密码</button>
+                <button v-if="u.is_locked" class="link-btn success" @click="onUnlock(u)">
+                  <i class="fas fa-unlock"></i> 解除锁定
+                </button>
                 <button class="link-btn" :class="u.is_active ? 'danger' : 'success'" @click="onToggle(u)">
                   <i :class="u.is_active ? 'fas fa-ban' : 'fas fa-check'"></i>
                   {{ u.is_active ? '禁用' : '启用' }}
@@ -294,6 +297,20 @@ const onResetPwd = async () => {
     const data = await store.resetUserPassword(resetTarget.value.id, { new_password: pwd });
     alert(data.message || '密码已重置');
     resetTarget.value = null;
+  } catch (e: any) {
+    alert(e.message);
+  } finally {
+    saving.value = false;
+  }
+};
+
+const onUnlock = async (u: AdminUserItem) => {
+  if (!u.is_locked) return;
+  if (!confirm(`确定要解除用户「${u.username}」的登录锁定吗？`)) return;
+  saving.value = true;
+  try {
+    const data = await store.unlockUser(u.id);
+    alert(data.message || '账号锁定已解除');
   } catch (e: any) {
     alert(e.message);
   } finally {

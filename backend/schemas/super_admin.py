@@ -100,6 +100,12 @@ class ResetPasswordResponse(BaseModel):
     message: str
 
 
+class UnlockUserResponse(BaseModel):
+    id: int
+    username: str
+    message: str
+
+
 # ----------------------------- 安全审计（Audit Log） -----------------------------
 
 

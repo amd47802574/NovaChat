@@ -31,6 +31,7 @@ from backend.schemas import (
     ResetPasswordResponse,
     RoleCount,
     ToggleActiveResponse,
+    UnlockUserResponse,
     TrendPoint,
     UpdateUserRequest,
     UpdateUserResponse,
@@ -380,6 +381,41 @@ def reset_password(
         username=user.username,
         message=f"已重置用户 {user.username} 的密码"
         + ("，账号锁定已解除" if unlocked else ""),
+    )
+
+
+@router.post("/users/{user_id}/unlock", response_model=UnlockUserResponse)
+def unlock_user(
+    user_id: int,
+    http_request: Request,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """超级管理员解除任意用户的登录锁定，包括管理员账号。"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    was_locked = bool(user.is_locked or user.locked_until or user.failed_login_attempts)
+    user.is_locked = False
+    user.locked_until = None
+    user.failed_login_attempts = 0
+    db.commit()
+
+    if was_locked:
+        write_audit_log(
+            db,
+            actor=current_user.username,
+            action="user_unlock",
+            target_type="user",
+            target_id=user.id,
+            detail=f"解除用户 {user.username} 的登录锁定",
+            ip=get_client_ip(http_request),
+        )
+    return UnlockUserResponse(
+        id=user.id,
+        username=user.username,
+        message=f"已解除用户 {user.username} 的登录锁定",
     )
 
 

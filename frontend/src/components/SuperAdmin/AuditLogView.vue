@@ -147,6 +147,7 @@ const actionOptions = [
   { value: 'user_update', label: '修改用户' },
   { value: 'user_enable', label: '启用用户' },
   { value: 'user_disable', label: '禁用用户' },
+  { value: 'user_unlock', label: '解除登录锁定' },
 ];
 
 const auditPages = computed(() => Math.max(1, Math.ceil(store.auditTotal / store.auditPageSize)));

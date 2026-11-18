@@ -156,6 +156,16 @@ export const useSuperAdminStore = defineStore('superAdmin', {
       }
     },
 
+    async unlockUser(userId: number) {
+      try {
+        const { data } = await api.post(`/super-admin/users/${userId}/unlock`);
+        await this.fetchUsers();
+        return data as { message: string };
+      } catch (error) {
+        return handleError(error);
+      }
+    },
+
     // --------------------------- 安全审计 ---------------------------
     async fetchAuditLogs() {
       this.auditLoading = true;
