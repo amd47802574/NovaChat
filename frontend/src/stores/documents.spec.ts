@@ -45,15 +45,13 @@ describe('document upload polling', () => {
     vi.restoreAllMocks();
   });
 
-  it('does not stop upload polling when the settings view unmounts', () => {
+  it('does not cancel background work when the settings view unmounts', () => {
     const source = readFileSync(
       new URL('../components/Documents/DocumentSettings.vue', import.meta.url),
       'utf8'
     );
-    const unmountedBlock = source.match(/onUnmounted\(\(\) => \{([\s\S]*?)\}\);/);
-
-    expect(unmountedBlock?.[1]).not.toContain('stopUploadJobPolling');
-    expect(unmountedBlock?.[1]).toContain('stopAllDeleteJobPolling');
+    expect(source).not.toContain('stopUploadJobPolling');
+    expect(source).not.toContain('stopAllDeleteJobPolling');
   });
 
   it('accepts markdown files in the upload input', () => {
@@ -190,5 +188,42 @@ describe('document upload polling', () => {
 
     expect(store.uploadPollTimer).toBeNull();
     expect(store.isUploading).toBe(false);
+  });
+});
+
+describe('document deletion', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    vi.stubGlobal('confirm', vi.fn(() => true));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('deletes through the immediate endpoint and removes the document on success', async () => {
+    const store = useDocumentStore();
+    store.documents = [
+      { filename: 'guide.pdf', file_type: 'PDF', chunk_count: 12 },
+      { filename: 'notes.md', file_type: 'Markdown', chunk_count: 3 },
+    ];
+    vi.mocked(api.delete).mockResolvedValue({ data: { message: 'deleted' } } as any);
+
+    await store.deleteDocument('guide.pdf');
+
+    expect(api.delete).toHaveBeenCalledWith('/documents/guide.pdf');
+    expect(store.documents.map(({ filename }) => filename)).toEqual(['notes.md']);
+    expect(store.deletingDocuments).toEqual([]);
+  });
+
+  it('keeps the document and reports a failed deletion', async () => {
+    const store = useDocumentStore();
+    store.documents = [{ filename: 'guide.pdf', file_type: 'PDF', chunk_count: 12 }];
+    vi.mocked(api.delete).mockRejectedValue({ response: { data: { detail: 'Milvus unavailable' } } });
+
+    await expect(store.deleteDocument('guide.pdf')).rejects.toThrow('Milvus unavailable');
+    expect(store.documents).toHaveLength(1);
+    expect(store.deletingDocuments).toEqual([]);
   });
 });

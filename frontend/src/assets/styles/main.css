@@ -2942,6 +2942,7 @@ textarea {
     --nova-text-muted: #a0a5ae;
     --nova-primary: #5b9cf5;
     --nova-primary-strong: #397de5;
+    --nova-danger: #dc4c64;
     --nova-user-gradient: linear-gradient(135deg, #d9ecff 0%, #bcdcff 100%);
     --nova-button-gradient: linear-gradient(135deg, #70b3ff 0%, #638ff2 100%);
     --nova-overlay: rgba(17, 24, 39, 0.38);
@@ -3000,6 +3001,7 @@ textarea {
     --nova-text-muted: #7e8090;
     --nova-primary: #a68cf5;
     --nova-primary-strong: #8a6fe7;
+    --nova-danger: #ff8490;
     --nova-user-gradient: linear-gradient(135deg, #625c83 0%, #4e587f 100%);
     --nova-button-gradient: linear-gradient(135deg, #b39df7 0%, #8f78e8 100%);
     --nova-overlay: rgba(6, 6, 12, 0.62);

@@ -1,6 +1,12 @@
 <template>
   <div class="upload-section">
-    <h3><i class="fas fa-upload"></i> 上传文档</h3>
+    <div class="upload-heading">
+      <div>
+        <h3><i class="fas fa-cloud-arrow-up"></i> 添加知识库文档</h3>
+        <p>文件会自动解析、切分并生成检索索引。</p>
+      </div>
+      <span class="upload-format"><i class="fas fa-file-circle-check"></i> PDF · Word · Excel · Markdown</span>
+    </div>
     <div class="upload-area">
       <input 
         type="file" 
@@ -9,9 +15,12 @@
         accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.htm,.md,.markdown"
         style="display: none"
       />
-      <button @click="triggerFileSelect" class="upload-btn">
-        <i class="fas fa-cloud-upload-alt"></i> 选择文件
-      </button>
+      <div class="upload-actions">
+        <button type="button" @click="triggerFileSelect" class="upload-btn" :disabled="documentStore.isUploading">
+          <i class="fas fa-folder-open"></i> 选择文件
+        </button>
+        <span class="upload-limit">单个文件最大 30 MB</span>
+      </div>
       
       <div v-if="documentStore.selectedFile" class="selected-file">
         <i class="fas fa-file"></i>
@@ -95,3 +104,116 @@ const onToggleCollapse = () => {
   documentStore.uploadProgressCollapsed = !documentStore.uploadProgressCollapsed;
 };
 </script>
+
+<style scoped>
+.upload-section {
+  padding: clamp(18px, 2.6vw, 26px);
+}
+
+.upload-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.upload-heading h3 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.upload-heading p {
+  margin-top: 5px;
+  color: var(--nova-text-secondary);
+  font-size: 0.84rem;
+}
+
+.upload-format,
+.upload-limit {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--nova-text-secondary);
+  font-size: 0.8rem;
+}
+
+.upload-format {
+  padding: 8px 11px;
+  border: 1px solid var(--nova-border);
+  border-radius: 999px;
+  background: var(--nova-surface);
+  white-space: nowrap;
+}
+
+.upload-format i {
+  color: var(--nova-primary);
+}
+
+.upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.upload-actions .upload-btn {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 12px;
+}
+
+.upload-actions .upload-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.selected-file {
+  min-width: 0;
+  border: 1px solid var(--nova-border);
+  border-radius: 14px;
+  background: var(--nova-surface-soft);
+}
+
+.selected-file .btn-primary {
+  min-height: 40px;
+  justify-content: center;
+  border-radius: 11px;
+}
+
+@media (max-width: 640px) {
+  .upload-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .upload-format {
+    max-width: 100%;
+    flex-wrap: wrap;
+    border-radius: 12px;
+    white-space: normal;
+  }
+
+  .upload-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .upload-actions .upload-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .selected-file {
+    flex-wrap: wrap;
+  }
+
+  .selected-file .selected-file-name {
+    flex: 1 1 calc(100% - 50px);
+  }
+
+  .selected-file .btn-primary {
+    width: 100%;
+  }
+}
+</style>

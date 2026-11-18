@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import api from '@/utils/api';
-import type { DocumentItem, UploadStep, ActiveDeleteJob, DeleteStep } from '@/types/document';
+import type { DocumentItem, UploadStep } from '@/types/document';
 
 export const useDocumentStore = defineStore('documents', {
   state: () => ({
@@ -13,9 +13,7 @@ export const useDocumentStore = defineStore('documents', {
     uploadProgressCollapsed: false,
     activeUploadJobId: '',
     uploadPollTimer: null as any,
-    deleteJobs: {} as Record<string, ActiveDeleteJob>,
-    deletePollTimers: {} as Record<string, any>,
-    deleteRemoveTimers: {} as Record<string, any>,
+    deletingDocuments: [] as string[],
   }),
 
   actions: {
@@ -26,15 +24,6 @@ export const useDocumentStore = defineStore('documents', {
         { key: 'parse', label: '解析与分块', percent: 0, status: 'pending', message: '' },
         { key: 'parent_store', label: '父级分块入库', percent: 0, status: 'pending', message: '' },
         { key: 'vector_store', label: '向量化入库', percent: 0, status: 'pending', message: '' },
-      ];
-    },
-
-    createDeleteSteps(): DeleteStep[] {
-      return [
-        { key: 'prepare', label: '准备删除', percent: 0, status: 'pending', message: '' },
-        { key: 'bm25', label: '同步 BM25 统计', percent: 0, status: 'pending', message: '' },
-        { key: 'milvus', label: '删除向量数据', percent: 0, status: 'pending', message: '' },
-        { key: 'parent_store', label: '删除父级分块', percent: 0, status: 'pending', message: '' },
       ];
     },
 
@@ -52,27 +41,13 @@ export const useDocumentStore = defineStore('documents', {
       };
     },
 
-    mergeDocumentsWithActiveDeletes(nextDocuments: DocumentItem[]): DocumentItem[] {
-      const merged = Array.isArray(nextDocuments) ? [...nextDocuments] : [];
-      Object.keys(this.deleteJobs).forEach((filename) => {
-        const job = this.deleteJobs[filename];
-        if (!job || job.status === 'failed') return;
-        const exists = merged.some((doc) => doc.filename === filename);
-        if (!exists) {
-          const currentDoc = this.documents.find((doc) => doc.filename === filename);
-          if (currentDoc) {
-            merged.push(currentDoc);
-          }
-        }
-      });
-      return merged;
-    },
-
     async loadDocuments() {
       this.documentsLoading = true;
       try {
         const response = await api.get('/documents');
-        this.documents = this.mergeDocumentsWithActiveDeletes(response.data.documents || []);
+        this.documents = (response.data.documents || []).filter(
+          (doc: DocumentItem) => !this.deletingDocuments.includes(doc.filename)
+        );
       } catch (error: any) {
         const errMsg = error.response?.data?.detail || error.message || '加载文档列表失败';
         throw new Error(errMsg);
@@ -210,172 +185,20 @@ export const useDocumentStore = defineStore('documents', {
       }
     },
 
-    isDeletingDocument(filename: string): boolean {
-      const job = this.deleteJobs[filename];
-      return !!(job && job.status === 'running');
-    },
-
-    isDeleteActionLocked(filename: string): boolean {
-      const job = this.deleteJobs[filename];
-      return !!(job && (job.status === 'running' || job.status === 'completed'));
-    },
-
-    getDeleteButtonIcon(filename: string): string {
-      const job = this.deleteJobs[filename];
-      if (job?.status === 'running') return 'fas fa-spinner fa-spin';
-      if (job?.status === 'completed') return 'fas fa-check';
-      return 'fas fa-trash';
-    },
-
-    setDeleteJob(filename: string, nextJob: Partial<ActiveDeleteJob>) {
-      this.deleteJobs = {
-        ...this.deleteJobs,
-        [filename]: {
-          ...(this.deleteJobs[filename] || {
-            status: 'running',
-            message: '',
-            collapsed: false,
-            steps: this.createDeleteSteps(),
-          }),
-          ...nextJob,
-        },
-      };
-    },
-
-    syncDeleteJob(filename: string, job: any) {
-      const current = this.deleteJobs[filename] || {};
-      this.setDeleteJob(filename, {
-        jobId: job.job_id,
-        status: job.status,
-        message: job.message || '',
-        collapsed: job.status === 'completed' ? true : Boolean(current.collapsed),
-        steps: Array.isArray(job.steps)
-          ? job.steps.map((step: any) => ({
-              key: step.key,
-              label: step.label,
-              percent: step.percent,
-              status: step.status,
-              message: step.message || '',
-            }))
-          : this.createDeleteSteps(),
-      });
-    },
-
     async deleteDocument(filename: string) {
-      if (this.isDeletingDocument(filename)) {
-        return;
-      }
-      if (!confirm(`确定要删除文档 "${filename}" 吗？这将同时删除 Milvus 中的所有相关向量。`)) {
-        return;
-      }
+      if (this.deletingDocuments.includes(filename)) return;
+      if (!confirm(`确定要删除知识库文档“${filename}”吗？相关向量和父级分块也会一并删除。`)) return;
 
-      this.clearDeleteRemovalTimer(filename);
-      this.setDeleteJob(filename, {
-        status: 'running',
-        message: '正在提交删除任务...',
-        collapsed: false,
-        steps: this.createDeleteSteps().map((step) =>
-          step.key === 'prepare'
-            ? { ...step, percent: 1, status: 'running' as const, message: '正在提交删除任务' }
-            : step
-        ),
-      });
-
+      this.deletingDocuments = [...this.deletingDocuments, filename];
       try {
-        const response = await api.delete(`/documents/delete/async/${encodeURIComponent(filename)}`);
-        const data = response.data;
-        this.setDeleteJob(filename, {
-          jobId: data.job_id,
-          status: 'running',
-          message: data.message || `正在删除 ${filename}`,
-          collapsed: false,
-        });
-        this.startDeleteJobPolling(filename, data.job_id);
-      } catch (error: any) {
-        const errMsg = error.response?.data?.detail || error.message || '删除请求失败';
-        this.setDeleteJob(filename, {
-          status: 'failed',
-          message: '删除文档失败：' + errMsg,
-          collapsed: false,
-          steps: this.deleteJobs[filename]?.steps || this.createDeleteSteps(),
-        });
-      }
-    },
-
-    startDeleteJobPolling(filename: string, jobId: string) {
-      this.stopDeleteJobPolling(filename);
-
-      const poll = async () => {
-        try {
-          const response = await api.get(`/documents/delete/jobs/${encodeURIComponent(jobId)}`);
-          const job = response.data;
-          this.syncDeleteJob(filename, job);
-
-          if (job.status === 'completed') {
-            this.stopDeleteJobPolling(filename);
-            this.scheduleDeletedDocumentRemoval(filename);
-          } else if (job.status === 'failed') {
-            this.stopDeleteJobPolling(filename);
-          }
-        } catch (error: any) {
-          const errMsg = error.response?.data?.detail || error.message || '查询失败';
-          this.setDeleteJob(filename, {
-            status: 'failed',
-            message: '删除进度查询失败：' + errMsg,
-            collapsed: false,
-            steps: this.deleteJobs[filename]?.steps || this.createDeleteSteps(),
-          });
-          this.stopDeleteJobPolling(filename);
-        }
-      };
-
-      poll();
-      this.deletePollTimers = {
-        ...this.deletePollTimers,
-        [filename]: setInterval(poll, 1000),
-      };
-    },
-
-    stopDeleteJobPolling(filename: string) {
-      const timer = this.deletePollTimers[filename];
-      if (!timer) return;
-      clearInterval(timer);
-      const { [filename]: _, ...rest } = this.deletePollTimers;
-      this.deletePollTimers = rest;
-    },
-
-    stopAllDeleteJobPolling() {
-      Object.keys(this.deletePollTimers).forEach((filename) => this.stopDeleteJobPolling(filename));
-    },
-
-    clearDeleteRemovalTimer(filename: string) {
-      const timer = this.deleteRemoveTimers[filename];
-      if (!timer) return;
-      clearTimeout(timer);
-      const { [filename]: _, ...rest } = this.deleteRemoveTimers;
-      this.deleteRemoveTimers = rest;
-    },
-
-    scheduleDeletedDocumentRemoval(filename: string) {
-      this.clearDeleteRemovalTimer(filename);
-      const timer = setTimeout(async () => {
+        await api.delete(`/documents/${encodeURIComponent(filename)}`);
         this.documents = this.documents.filter((doc) => doc.filename !== filename);
-        const { [filename]: _job, ...jobs } = this.deleteJobs;
-        const { [filename]: _timer, ...timers } = this.deleteRemoveTimers;
-        this.deleteJobs = jobs;
-        this.deleteRemoveTimers = timers;
-        await this.loadDocuments();
-      }, 3000);
-      this.deleteRemoveTimers = {
-        ...this.deleteRemoveTimers,
-        [filename]: timer,
-      };
-    },
-
-    toggleDeleteJobCollapsed(filename: string) {
-      const job = this.deleteJobs[filename];
-      if (!job) return;
-      this.setDeleteJob(filename, { collapsed: !job.collapsed });
+      } catch (error: any) {
+        const errMsg = error.response?.data?.detail || error.message || '删除失败';
+        throw new Error(errMsg);
+      } finally {
+        this.deletingDocuments = this.deletingDocuments.filter((item) => item !== filename);
+      }
     },
   },
 });
